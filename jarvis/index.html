@@ -256,6 +256,13 @@
       return value >= 100 ? value.toFixed(0) : value >= 10 ? value.toFixed(1) : value.toFixed(2);
     }
 
+    function isUsableReading(reading) {
+      if (reading?.status !== "available" || typeof reading.value !== "number" || !Number.isFinite(reading.value)) return false;
+      if (typeof reading.source !== "string" || !reading.source.trim()) return false;
+      const sampledAt = Date.parse(reading.sampledAt || "");
+      return Number.isFinite(sampledAt) && sampledAt <= Date.now() + 60_000;
+    }
+
     function renderTelemetry(payload) {
       const readings = new Map((payload.readings || []).map(reading => [reading.metric, reading]));
       const voltageIn = readings.get("voltage.input");
@@ -280,7 +287,7 @@
         voltageOut?.detail || "No compatible output voltage meter is connected."
       );
 
-      const temperatures = [cpu, gpu].filter(reading => reading?.status === "available");
+      const temperatures = [cpu, gpu].filter(isUsableReading);
       if (temperatures.length) {
         const value = temperatures.map(reading => {
           const label = reading.metric.endsWith(".cpu") ? "CPU" : "GPU";
@@ -290,11 +297,11 @@
         const detail = `Source: ${temperatures[0].source || "local sensor"}`;
         setTelemetryCard(telemetryCards.temperature, value, "available", detail, sampledAt);
       } else {
-        const reason = cpu?.detail || gpu?.detail || "No temperature sensor reading is available.";
+        const reason = cpu?.detail || gpu?.detail || "No temperature reading with a valid value, source, and sample time is available.";
         setTelemetryCard(telemetryCards.temperature, "Unavailable", "unavailable", reason);
       }
 
-      const availableFans = fanReadings.filter(([, reading]) => reading.status === "available");
+      const availableFans = fanReadings.filter(([, reading]) => isUsableReading(reading));
       if (availableFans.length) {
         const value = availableFans.map(([metric, reading]) => {
           const name = metric.startsWith("fan.rpm.") ? metric.slice("fan.rpm.".length) : "Fan";
@@ -309,10 +316,12 @@
         setTelemetryCard(telemetryCards.fan, "Unavailable", "unavailable", detail, fanReading?.sampledAt);
       }
 
-      if (download?.status === "available" || upload?.status === "available") {
-        const down = download?.status === "available" ? `↓ ${formatMbps(download.value)} Mbps` : "↓ unavailable";
-        const up = upload?.status === "available" ? `↑ ${formatMbps(upload.value)} Mbps` : "↑ unavailable";
-        const sampledAt = [download?.sampledAt, upload?.sampledAt].filter(Boolean).sort().at(-1);
+      const hasDownload = isUsableReading(download);
+      const hasUpload = isUsableReading(upload);
+      if (hasDownload || hasUpload) {
+        const down = hasDownload ? `↓ ${formatMbps(download.value)} Mbps` : "↓ unavailable";
+        const up = hasUpload ? `↑ ${formatMbps(upload.value)} Mbps` : "↑ unavailable";
+        const sampledAt = [hasDownload ? download.sampledAt : null, hasUpload ? upload.sampledAt : null].filter(Boolean).sort().at(-1);
         setTelemetryCard(telemetryCards.network, `${down} · ${up}`, "available", download?.detail || upload?.detail || "Current interface traffic.", sampledAt);
       } else {
         const reason = download?.detail || upload?.detail || "Waiting for network counters.";
