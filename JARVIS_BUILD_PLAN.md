@@ -6,7 +6,14 @@ Build JARVIS as a local-first system intelligence assistant that understands the
 ## Product distinction
 The long-term target is a personal, local computer twin for Liam's real workflows (school, coding, and app development). It learns a privacy-preserving baseline for each chosen workflow, connects changes across hardware, processes, storage, network, and installed extensions, and explains likely causes with sources, timestamps, and confidence.
 
-Its optimization loop should propose one reversible change at a time, state the expected benefit and risk, ask Liam before applying it, then measure before/after under a comparable workload and show whether it helped. No silent cleanup or unverified "speed up" claims. This is a differentiation target, not a claim of proven novelty: system monitors and diagnostic assistants already exist, so do not promise that nobody has built anything similar.
+Its optimization loop should propose one reversible change at a time, state the expected benefit and risk, ask Liam before applying it, then measure before/after under a comparable workload and show whether it helped. No silent cleanup or unverified "speed up" claims. This is a differentiation target, not a claim of proven novelty: system monitors and diagnostic assistants already exist, including NVIDIA's G-Assist on supported RTX systems, so do not promise that nobody has built anything similar.
+
+## Product and business direction
+- Target MacBooks and Windows laptops first, including gaming laptops; Chromebooks are out of scope. Keep the UI and reading contract shared, with separate local providers for macOS, Windows, and Linux.
+- The current Mac prototype uses local, rule-based answers grounded in the detected model and readings. Optional AI can come later, with a clear preview and opt-in before any device data leaves the laptop.
+- Keep basic local inventory and safety guidance useful for free. Treat about €10/month as a pricing hypothesis to validate, potentially for opt-in AI, saved workflow baselines, and supported optimization hand-offs—not a promise or a requirement for basic diagnostics.
+- Prefer first-party or free supported tools. For Windows RTX laptops, NVIDIA's own app provides automatic tuning on supported GPUs; later JARVIS can explain and link to a vendor tool rather than silently changing power, voltage, firmware, or fan controls.
+- Never promise a generic GPU unlock or 2× performance gain. Results depend on the exact laptop, GPU, cooling, power limits, workload, and game settings.
 
 ## First version (MVP)
 - A local system map for hardware, storage, and network readings.
@@ -50,6 +57,6 @@ Run a basic app locally on the Mac before adding AI, voice, or account integrati
 2. Learn separate local baselines for school, coding, and idle sessions only when Liam chooses those labels; let him inspect and delete the stored history.
 3. Build the first optimization experiment: state a measured issue, offer one reversible change, ask first, and compare fresh before/after readings.
 4. Add supported extension/plugin and startup-item inventory with explicit permission states.
-5. Validate hardware coverage on supported Mac models; add separate Windows/Linux adapters only where data sources and permissions are documented.
+5. Validate the local inventory and available readings on this Mac, then add a read-only Windows gaming-laptop adapter and verify it on real Intel/AMD/NVIDIA hardware; add Linux after that. Report missing vendor sensors without elevation or workarounds.
 6. Add voltage-meter support only for a documented, calibrated device and pin map.
 7. Decide separately whether to keep the local HTML app or migrate frameworks. Do not connect a model API until secure server-side key handling and data minimization are planned.
