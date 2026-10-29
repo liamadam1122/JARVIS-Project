@@ -63,6 +63,62 @@ function mapMacReading(metric, value, unit, timestamp, detail) {
   return makeReading(metric, value, unit, sensorProvider, timestamp, detail);
 }
 
+function addAppleSiliconReadings(readings, native, sampledAt) {
+  const add = (metric, value, unit, detail) => readings.push(mapMacReading(metric, value, unit, sampledAt, detail));
+  const ratio = value => typeof value === "number" && Number.isFinite(value) ? value * 100 : null;
+  const gib = value => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value / (1024 ** 3) : null;
+  const percent = (used, total) => typeof used === "number" && Number.isFinite(used) && typeof total === "number" && Number.isFinite(total) && total > 0
+    ? used / total * 100
+    : null;
+
+  add("cpu.usage", ratio(native.cpu?.usageRatio), "%", "CPU utilization");
+  add("cpu.power", native.cpu?.powerWatts, "W", "CPU power draw");
+  add("temperature.cpu", native.cpu?.tempCelsius, "°C", "CPU temperature");
+  add("gpu.usage", ratio(native.gpu?.usageRatio), "%", "GPU utilization");
+  add("gpu.frequency", native.gpu?.frequencyMhz, "MHz", "GPU frequency");
+  add("gpu.power", native.gpu?.powerWatts, "W", "GPU power draw");
+  add("temperature.gpu", native.gpu?.tempCelsius, "°C", "GPU temperature");
+  add("memory.ram.used", gib(native.memory?.ramUsedBytes), "GiB", "RAM currently used");
+  add("memory.ram.total", gib(native.memory?.ramTotalBytes), "GiB", "RAM total reported by the provider");
+  add("memory.ram.usage", percent(native.memory?.ramUsedBytes, native.memory?.ramTotalBytes), "%", "RAM used as a percentage of reported total");
+  add("memory.ram.power", native.memory?.ramPowerWatts, "W", "RAM power draw");
+  add("memory.swap.used", gib(native.memory?.swapUsedBytes), "GiB", "Swap currently used");
+  add("memory.swap.total", gib(native.memory?.swapTotalBytes), "GiB", "Swap total reported by the provider");
+  add("memory.swap.usage", percent(native.memory?.swapUsedBytes, native.memory?.swapTotalBytes), "%", "Swap used as a percentage of reported total");
+  add("accelerator.ane.power", native.ane?.powerWatts, "W", "Apple Neural Engine power draw");
+  readings.push(unavailable("thermal.pressure", "level", "This sensor provider does not expose macOS thermal pressure.", "unsupported"));
+
+  const fans = Array.isArray(native.fans) ? native.fans : [];
+  if (!fans.length) {
+    readings.push(makeReading("fan.rpm", null, "rpm", sensorProvider, sampledAt, "No fan tachometer reading was reported by the sensor provider."));
+    return;
+  }
+  const usedKeys = new Set();
+  fans.forEach((fan, index) => {
+    const rawName = String(fan.name || `fan${index + 1}`).slice(0, 64);
+    const baseKey = rawName.replace(/[^a-z0-9_-]/gi, "_") || `fan${index + 1}`;
+    let key = baseKey;
+    let suffix = 2;
+    while (usedKeys.has(key)) key = `${baseKey}_${suffix++}`;
+    usedKeys.add(key);
+    const detail = `Read-only fan tachometer. Hardware label: ${rawName}.`;
+    const fanStatus = Number.isFinite(fan.rpm) && fan.rpm >= 0 && fan.rpm <= 30_000 ? "available" : "error";
+    readings.push(makeReading(`fan.rpm.${key}`, fan.rpm, "rpm", sensorProvider, sampledAt, detail, fanStatus));
+    readings.push(makeReading(`fan.rpm_max.${key}`, fan.maxRpm, "rpm", sensorProvider, sampledAt, `Maximum fan speed reported for ${rawName}.`));
+  });
+}
+
+function addUnavailableAppleReadings(readings, reason, status) {
+  const metrics = [
+    ["cpu.usage", "%"], ["cpu.power", "W"], ["temperature.cpu", "°C"],
+    ["gpu.usage", "%"], ["gpu.frequency", "MHz"], ["gpu.power", "W"], ["temperature.gpu", "°C"],
+    ["memory.ram.used", "GiB"], ["memory.ram.total", "GiB"], ["memory.ram.usage", "%"], ["memory.ram.power", "W"],
+    ["memory.swap.used", "GiB"], ["memory.swap.total", "GiB"], ["memory.swap.usage", "%"],
+    ["accelerator.ane.power", "W"], ["fan.rpm", "rpm"], ["thermal.pressure", "level"],
+  ];
+  for (const [metric, unit] of metrics) readings.push(unavailable(metric, unit, reason, status));
+}
+
 async function collectTelemetry() {
   const now = Date.now();
   if (cachedPayload && now - cachedAt < POLL_CACHE_MS) return cachedPayload;
@@ -71,7 +127,8 @@ async function collectTelemetry() {
   sampleInFlight = (async () => {
     const sampledAt = new Date().toISOString();
     let native = null;
-    let network = null;
+    let networkRows = [];
+    let networkMetadata = [];
     let macError = null;
     let networkError = null;
     const jobs = [];
@@ -79,72 +136,76 @@ async function collectTelemetry() {
     if (sampler) {
       jobs.push(sampler.sampleNow().then(value => { native = value; }).catch(error => { macError = error; }));
     }
-    jobs.push(si.networkStats().then(value => { network = value?.[0] ?? null; }).catch(error => { networkError = error; }));
+    jobs.push(si.networkStats("*").then(value => { networkRows = Array.isArray(value) ? value : []; }).catch(error => { networkError = error; }));
+    jobs.push(si.networkInterfaces(false).then(value => { networkMetadata = Array.isArray(value) ? value : []; }).catch(() => {}));
     await Promise.all(jobs);
 
-    const sensorTime = native?.timestamp ?? sampledAt;
     const readings = [
       unavailable("voltage.input", "V", "No compatible input voltage meter is connected."),
       unavailable("voltage.output", "V", "No compatible output voltage meter is connected."),
     ];
 
     if (!sensorProvider) {
-      readings.push(unavailable("temperature.cpu", "°C", sensorUnavailableReason, sensorUnavailableStatus));
-      readings.push(unavailable("temperature.gpu", "°C", sensorUnavailableReason, sensorUnavailableStatus));
-      readings.push(unavailable("fan.rpm", "rpm", sensorUnavailableReason, sensorUnavailableStatus));
-      readings.push(unavailable("thermal.pressure", "level", sensorUnavailableReason, sensorUnavailableStatus));
+      addUnavailableAppleReadings(readings, sensorUnavailableReason, sensorUnavailableStatus);
     } else if (macError) {
       const reason = `Mac sensor read failed: ${macError.message}`;
-      readings.push(unavailable("temperature.cpu", "°C", reason, "error"));
-      readings.push(unavailable("temperature.gpu", "°C", reason, "error"));
-      readings.push(unavailable("fan.rpm", "rpm", reason, "error"));
-      readings.push(unavailable("thermal.pressure", "level", reason, "error"));
+      addUnavailableAppleReadings(readings, reason, "error");
     } else if (native) {
-      readings.push(mapMacReading("temperature.cpu", native.cpu?.tempCelsius, "°C", sensorTime, "CPU sensor"));
-      readings.push(mapMacReading("temperature.gpu", native.gpu?.tempCelsius, "°C", sensorTime, "GPU sensor"));
-      const fans = Array.isArray(native.fans) ? native.fans : [];
-      if (fans.length) {
-        const validFans = fans.filter(fan => Number.isFinite(fan.rpm) && fan.rpm >= 0 && fan.rpm <= 30_000);
-        if (validFans.length) {
-          validFans.forEach((fan, index) => {
-            const name = String(fan.name || `fan${index + 1}`).replace(/[^a-z0-9_-]/gi, "_");
-            readings.push(makeReading(`fan.rpm.${name}`, fan.rpm, "rpm", sensorProvider, sensorTime, "Read-only fan tachometer reading."));
-          });
-        } else {
-          readings.push(unavailable("fan.rpm", "rpm", "Fan data was outside the supported range.", "error"));
-        }
-      } else {
-        readings.push(makeReading("fan.rpm", null, "rpm", sensorProvider, sensorTime, "No fan sensor was reported by this Mac."));
-      }
-      const level = native.thermal?.level;
-      readings.push(makeReading("thermal.pressure", level, "level", "macOS ProcessInfo thermal state", sensorTime, native.thermal?.state ?? "System thermal state."));
+      addAppleSiliconReadings(readings, native, native.timestamp ?? sampledAt);
     }
 
     if (networkError) {
       readings.push(unavailable("network.download", "Mbps", `Network counter unavailable: ${networkError.message}`, "error"));
       readings.push(unavailable("network.upload", "Mbps", `Network counter unavailable: ${networkError.message}`, "error"));
-    } else if (!network || network.operstate === "down") {
-      readings.push(unavailable("network.download", "Mbps", "No active external network interface was reported."));
-      readings.push(unavailable("network.upload", "Mbps", "No active external network interface was reported."));
     } else {
-      const validRate = value => typeof value === "number" && Number.isFinite(value) && value >= 0;
-      const source = `systeminformation · ${network.iface}`;
-      const detail = `Live interface traffic, not a speed test. Interface: ${network.iface}.`;
-      readings.push(validRate(network.rx_sec)
-        ? makeReading("network.download", network.rx_sec * 8 / 1_000_000, "Mbps", source, sampledAt, detail)
-        : unavailable("network.download", "Mbps", "Collecting the first network counter interval."));
-      readings.push(validRate(network.tx_sec)
-        ? makeReading("network.upload", network.tx_sec * 8 / 1_000_000, "Mbps", source, sampledAt, detail)
-        : unavailable("network.upload", "Mbps", "Collecting the first network counter interval."));
+      const usedKeys = new Set();
+      for (const network of networkRows) {
+        const iface = String(network.iface || "unknown").slice(0, 64);
+        const baseKey = iface.replace(/[^a-z0-9_-]/gi, "_") || "unknown";
+        let key = baseKey;
+        let suffix = 2;
+        while (usedKeys.has(key)) key = `${baseKey}_${suffix++}`;
+        usedKeys.add(key);
+        const source = `systeminformation · ${iface}`;
+        const detail = `Live interface traffic, not a speed test. Interface: ${iface}.`;
+        const addNetworkReading = (direction, bytesPerSecond, label) => {
+          const metric = `network.${key}.${direction}`;
+          const isValid = typeof bytesPerSecond === "number" && Number.isFinite(bytesPerSecond) && bytesPerSecond >= 0;
+          const reading = network.operstate === "down"
+            ? makeReading(metric, null, "Mbps", source, sampledAt, `Interface ${iface} is down.`, "unavailable")
+            : isValid
+              ? makeReading(metric, bytesPerSecond * 8 / 1_000_000, "Mbps", source, sampledAt, detail)
+              : makeReading(metric, null, "Mbps", source, sampledAt, "Collecting the first network counter interval.", "unavailable");
+          readings.push({ ...reading, label: `${iface} ${label}` });
+        };
+        addNetworkReading("download", network.rx_sec, "download");
+        addNetworkReading("upload", network.tx_sec, "upload");
+      }
+      if (!networkRows.length) {
+        readings.push(unavailable("network.download", "Mbps", "No network interface counters were reported."));
+        readings.push(unavailable("network.upload", "Mbps", "No network interface counters were reported."));
+      }
     }
 
     const availableCount = readings.filter(reading => reading.status === "available").length;
+    const device = sampler?.soc ?? native?.soc ?? null;
     const payload = {
       version: 1,
       sampledAt,
       staleAfterMs: STALE_AFTER_MS,
       state: availableCount ? "partial" : "unavailable",
       provider: sensorProvider ?? "network counters only",
+      device,
+      capabilities: {
+        defaultNetworkInterface: networkMetadata.find(network => network.default)?.iface ?? null,
+        networkInterfaces: networkMetadata.map(network => ({
+          name: network.iface,
+          isDefault: Boolean(network.default),
+          state: network.operstate ?? "unknown",
+          type: network.type ?? "unknown",
+        })),
+        metrics: readings.map(reading => reading.metric),
+      },
       readings,
     };
     cachedPayload = payload;
