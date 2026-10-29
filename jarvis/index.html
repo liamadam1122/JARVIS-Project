@@ -92,12 +92,18 @@
     }
     .telemetry-title { color: #c7d7e9; font-size: 12px; font-weight: 700; letter-spacing: .08em; }
     .telemetry-state { color: #9aabc0; font-size: 10px; }
+    .telemetry-device { margin: 0 0 10px; color: #9aabc0; font-size: 11px; }
+    .network-details { margin-top: 12px; color: #9aabc0; font-size: 11px; }
+    .network-details summary { cursor: pointer; padding: 8px 0; }
+    .network-details[open] .metric-grid { margin-top: 8px; }
     .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 9px; }
     .metric-card { border: 1px solid var(--line); border-radius: 10px; padding: 11px; min-width: 0; }
     .metric-name { display: block; color: var(--muted); font-size: 11px; }
     .metric-value { display: block; margin-top: 5px; color: #d7e2ef; font-size: 13px; font-weight: 650; }
     .metric-value[data-state="available"] { color: var(--green); }
     .metric-value[data-state="stale"] { color: #ffd27a; }
+    .metric-value[data-state="error"] { color: #ff9b9b; }
+    .metric-value[data-state="unsupported"] { color: #9aabc0; }
     .metric-detail { display: block; margin-top: 3px; color: #71839a; font-size: 10px; }
     .metric-time { display: block; margin-top: 3px; color: #71839a; font-size: 10px; }
     .chat { display:grid; gap:18px; padding:0 0 22px; }
@@ -171,38 +177,17 @@
             <span class="telemetry-title">SYSTEM TELEMETRY</span>
             <span class="telemetry-state" id="telemetryStatus" role="status">Local telemetry bridge not connected</span>
           </div>
-          <div class="metric-grid">
-            <div class="metric-card" id="voltageInputCard">
-              <span class="metric-name">Voltage input</span>
-              <span class="metric-value" data-value>Unavailable</span>
-              <span class="metric-detail" data-detail>Needs a supported input voltage meter</span>
-              <time class="metric-time" data-time>No sample time</time>
-            </div>
-            <div class="metric-card" id="voltageOutputCard">
-              <span class="metric-name">Voltage output</span>
-              <span class="metric-value" data-value>Unavailable</span>
-              <span class="metric-detail" data-detail>Needs a supported output voltage meter</span>
-              <time class="metric-time" data-time>No sample time</time>
-            </div>
-            <div class="metric-card" id="temperatureCard">
-              <span class="metric-name">Temperature</span>
-              <span class="metric-value" data-value>Unavailable</span>
-              <span class="metric-detail" data-detail>Waiting for a supported local sensor reader</span>
-              <time class="metric-time" data-time>No sample time</time>
-            </div>
-            <div class="metric-card" id="fanCard">
-              <span class="metric-name">Fan speed</span>
-              <span class="metric-value" data-value>Unavailable</span>
-              <span class="metric-detail" data-detail>Read-only RPM readings when hardware reports them</span>
-              <time class="metric-time" data-time>No sample time</time>
-            </div>
-            <div class="metric-card" id="networkCard">
-              <span class="metric-name">Live network traffic</span>
-              <span class="metric-value" data-value>Not measured</span>
-              <span class="metric-detail" data-detail>Current transfer rate, not an internet speed test</span>
-              <time class="metric-time" data-time>No sample time</time>
-            </div>
+          <div class="telemetry-device" id="telemetryDevice">Waiting for the local sensor inventory.</div>
+          <div class="metric-grid" id="metricGrid" aria-live="polite">
+            <div class="metric-card"><span class="metric-name">Sensor inventory</span><span class="metric-value">Connecting…</span><span class="metric-detail">Only readings reported by supported local providers appear here.</span></div>
           </div>
+          <div class="telemetry-title" style="margin:16px 0 8px">DEFAULT NETWORK INTERFACE</div>
+          <div class="metric-grid" id="primaryNetworkGrid"></div>
+          <details class="network-details" id="networkDetails">
+            <summary>All detected network interfaces</summary>
+            <div class="metric-grid" id="networkGrid"></div>
+          </details>
+          <div class="metric-detail" style="margin-top:12px">Board-pin voltage needs a compatible meter and a documented pin map. JARVIS will not probe unknown pins.</div>
         </section>
         <div class="composer-wrap">
           <form class="composer" id="form">
@@ -222,39 +207,13 @@
     const suggestions = document.getElementById("suggestions");
     const send = document.getElementById("send");
     const telemetryStatus = document.getElementById("telemetryStatus");
-    const telemetryCards = {
-      voltageInput: document.getElementById("voltageInputCard"),
-      voltageOutput: document.getElementById("voltageOutputCard"),
-      temperature: document.getElementById("temperatureCard"),
-      fan: document.getElementById("fanCard"),
-      network: document.getElementById("networkCard"),
-    };
+    const telemetryDevice = document.getElementById("telemetryDevice");
+    const metricGrid = document.getElementById("metricGrid");
+    const primaryNetworkGrid = document.getElementById("primaryNetworkGrid");
+    const networkGrid = document.getElementById("networkGrid");
+    const networkDetails = document.getElementById("networkDetails");
+    let telemetryCards = [];
     const readingFreshnessMs = 12000;
-
-    function setTelemetryCard(card, value, status, detail, sampledAt = null) {
-      const valueNode = card.querySelector("[data-value]");
-      const detailNode = card.querySelector("[data-detail]");
-      const timeNode = card.querySelector("[data-time]");
-      valueNode.textContent = value;
-      valueNode.dataset.state = status;
-      valueNode.dataset.lastValue = value;
-      detailNode.textContent = detail;
-      card.dataset.sampledAt = sampledAt || "";
-      const parsedTime = sampledAt ? new Date(sampledAt) : null;
-      if (parsedTime && Number.isFinite(parsedTime.getTime())) {
-        timeNode.dateTime = parsedTime.toISOString();
-        timeNode.textContent = `Sampled ${parsedTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
-      } else {
-        timeNode.removeAttribute("datetime");
-        timeNode.textContent = "No sample time";
-      }
-      card.dataset.lastDetail = detail;
-      card.dataset.status = status;
-    }
-
-    function formatMbps(value) {
-      return value >= 100 ? value.toFixed(0) : value >= 10 ? value.toFixed(1) : value.toFixed(2);
-    }
 
     function isUsableReading(reading) {
       if (reading?.status !== "available" || typeof reading.value !== "number" || !Number.isFinite(reading.value)) return false;
@@ -263,79 +222,120 @@
       return Number.isFinite(sampledAt) && sampledAt <= Date.now() + 60_000;
     }
 
+    function metricLabel(reading) {
+      if (reading.label) return reading.label;
+      const labels = {
+        "voltage.input": "Voltage input",
+        "voltage.output": "Voltage output",
+        "temperature.cpu": "CPU temperature",
+        "temperature.gpu": "GPU temperature",
+        "cpu.usage": "CPU utilization",
+        "cpu.power": "CPU power",
+        "gpu.usage": "GPU utilization",
+        "gpu.frequency": "GPU frequency",
+        "gpu.power": "GPU power",
+        "memory.ram.used": "RAM used",
+        "memory.ram.total": "RAM total",
+        "memory.ram.usage": "RAM utilization",
+        "memory.ram.power": "RAM power",
+        "memory.swap.used": "Swap used",
+        "memory.swap.total": "Swap total",
+        "memory.swap.usage": "Swap utilization",
+        "accelerator.ane.power": "Neural Engine power",
+        "thermal.pressure": "Thermal pressure",
+        "fan.rpm": "Fan speed",
+      };
+      if (labels[reading.metric]) return labels[reading.metric];
+      const fan = reading.metric.match(/^fan\.rpm(?:_max)?\.(.+)$/);
+      if (fan) return `${fan[1]} fan ${reading.metric.includes("_max") ? "maximum speed" : "speed"}`;
+      return reading.metric.split(".").map(part => part.replaceAll("_", " ")).join(" · ");
+    }
+
+    function formatReading(value, unit) {
+      if (unit === "rpm" || unit === "MHz" || unit === "level") return `${Math.round(value)} ${unit}`;
+      if (unit === "%") return `${value.toFixed(1)}%`;
+      if (unit === "°C" || unit === "W" || unit === "GiB") return `${value.toFixed(1)} ${unit}`;
+      if (unit === "Mbps") return `${value >= 100 ? value.toFixed(0) : value >= 10 ? value.toFixed(1) : value.toFixed(2)} Mbps`;
+      return `${value} ${unit || ""}`.trim();
+    }
+
+    function createMetricCard(reading) {
+      const card = document.createElement("div");
+      card.className = "metric-card";
+      card.dataset.metric = reading.metric;
+      const name = document.createElement("span");
+      name.className = "metric-name";
+      name.textContent = metricLabel(reading);
+      const value = document.createElement("span");
+      value.className = "metric-value";
+      const usable = isUsableReading(reading);
+      const status = usable ? "available" : reading.status === "available" ? "error" : reading.status || "unavailable";
+      const showStaleValue = reading.status === "stale" && typeof reading.value === "number" && Number.isFinite(reading.value);
+      value.textContent = usable
+        ? formatReading(reading.value, reading.unit)
+        : showStaleValue ? `Stale · ${formatReading(reading.value, reading.unit)}`
+          : status === "unsupported" ? "Unsupported"
+            : status === "error" ? "Read error" : "Unavailable";
+      value.dataset.state = status;
+      value.dataset.lastValue = typeof reading.value === "number" && Number.isFinite(reading.value)
+        ? formatReading(reading.value, reading.unit) : "Unavailable";
+      const detail = document.createElement("span");
+      detail.className = "metric-detail";
+      detail.textContent = usable || reading.status !== "available"
+        ? reading.detail || `Source: ${reading.source || "unspecified"}`
+        : "The provider omitted a valid number, source, or sample time; this value is hidden.";
+      const time = document.createElement("time");
+      time.className = "metric-time";
+      const parsedTime = reading.sampledAt ? new Date(reading.sampledAt) : null;
+      if (parsedTime && Number.isFinite(parsedTime.getTime())) {
+        time.dateTime = parsedTime.toISOString();
+        time.textContent = `Sampled ${parsedTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+      } else {
+        time.textContent = "No sample time";
+      }
+      card.dataset.sampledAt = parsedTime && Number.isFinite(parsedTime.getTime()) ? parsedTime.toISOString() : "";
+      card.dataset.status = status;
+      card.dataset.lastDetail = detail.textContent;
+      card.append(name, value, detail, time);
+      return card;
+    }
+
     function renderTelemetry(payload) {
-      const readings = new Map((payload.readings || []).map(reading => [reading.metric, reading]));
-      const voltageIn = readings.get("voltage.input");
-      const voltageOut = readings.get("voltage.output");
-      const cpu = readings.get("temperature.cpu");
-      const gpu = readings.get("temperature.gpu");
-      const fanReadings = [...readings.entries()]
-        .filter(([metric]) => metric === "fan.rpm" || metric.startsWith("fan.rpm."));
-      const download = readings.get("network.download");
-      const upload = readings.get("network.upload");
-
-      setTelemetryCard(
-        telemetryCards.voltageInput,
-        "Unavailable",
-        "unavailable",
-        voltageIn?.detail || "No compatible input voltage meter is connected."
-      );
-      setTelemetryCard(
-        telemetryCards.voltageOutput,
-        "Unavailable",
-        "unavailable",
-        voltageOut?.detail || "No compatible output voltage meter is connected."
-      );
-
-      const temperatures = [cpu, gpu].filter(isUsableReading);
-      if (temperatures.length) {
-        const value = temperatures.map(reading => {
-          const label = reading.metric.endsWith(".cpu") ? "CPU" : "GPU";
-          return `${label} ${reading.value.toFixed(1)}°C`;
-        }).join(" · ");
-        const sampledAt = temperatures.map(reading => reading.sampledAt).filter(Boolean).sort().at(-1);
-        const detail = `Source: ${temperatures[0].source || "local sensor"}`;
-        setTelemetryCard(telemetryCards.temperature, value, "available", detail, sampledAt);
-      } else {
-        const reason = cpu?.detail || gpu?.detail || "No temperature reading with a valid value, source, and sample time is available.";
-        setTelemetryCard(telemetryCards.temperature, "Unavailable", "unavailable", reason);
+      const readings = Array.isArray(payload.readings) ? payload.readings : [];
+      const networkReadings = readings.filter(reading => reading.metric.startsWith("network."));
+      const hardwareReadings = readings.filter(reading => !reading.metric.startsWith("network."));
+      const interfaces = payload.capabilities?.networkInterfaces || [];
+      const defaultInterface = payload.capabilities?.defaultNetworkInterface;
+      const defaultCards = defaultInterface
+        ? networkReadings.filter(reading => reading.label?.startsWith(`${defaultInterface} `)).map(createMetricCard)
+        : [];
+      const networkCards = networkReadings.map(createMetricCard);
+      const hardwareCards = hardwareReadings.map(createMetricCard);
+      telemetryCards = [...hardwareCards, ...defaultCards, ...networkCards];
+      metricGrid.replaceChildren(...hardwareCards);
+      primaryNetworkGrid.replaceChildren(...defaultCards);
+      if (!defaultCards.length) {
+        const note = document.createElement("div");
+        note.className = "metric-detail";
+        note.textContent = "No default network interface was identified.";
+        primaryNetworkGrid.replaceChildren(note);
       }
-
-      const availableFans = fanReadings.filter(([, reading]) => isUsableReading(reading));
-      if (availableFans.length) {
-        const value = availableFans.map(([metric, reading]) => {
-          const name = metric.startsWith("fan.rpm.") ? metric.slice("fan.rpm.".length) : "Fan";
-          return `${name} ${Math.round(reading.value)} RPM`;
-        }).join(" · ");
-        const sampledAt = availableFans.map(([, reading]) => reading.sampledAt).filter(Boolean).sort().at(-1);
-        const source = availableFans[0][1].source || "local sensor";
-        setTelemetryCard(telemetryCards.fan, value, "available", `Read-only source: ${source}`, sampledAt);
-      } else {
-        const fanReading = fanReadings.find(([, reading]) => reading.detail)?.[1];
-        const detail = fanReading?.detail || "No fan sensor was reported.";
-        setTelemetryCard(telemetryCards.fan, "Unavailable", "unavailable", detail, fanReading?.sampledAt);
-      }
-
-      const hasDownload = isUsableReading(download);
-      const hasUpload = isUsableReading(upload);
-      if (hasDownload || hasUpload) {
-        const down = hasDownload ? `↓ ${formatMbps(download.value)} Mbps` : "↓ unavailable";
-        const up = hasUpload ? `↑ ${formatMbps(upload.value)} Mbps` : "↑ unavailable";
-        const sampledAt = [hasDownload ? download.sampledAt : null, hasUpload ? upload.sampledAt : null].filter(Boolean).sort().at(-1);
-        setTelemetryCard(telemetryCards.network, `${down} · ${up}`, "available", download?.detail || upload?.detail || "Current interface traffic.", sampledAt);
-      } else {
-        const reason = download?.detail || upload?.detail || "Waiting for network counters.";
-        setTelemetryCard(telemetryCards.network, "Not measured", "unavailable", reason);
-      }
-
-      telemetryStatus.textContent = payload.state === "unavailable"
-        ? "Connected · readings unavailable"
-        : "Connected · read-only local sensors";
+      networkGrid.replaceChildren(...networkCards);
+      networkDetails.querySelector("summary").textContent = `All detected network interfaces (${interfaces.length}) · live traffic, not a speed test`;
+      const device = payload.device;
+      const cpuCores = device?.ecpuCores || device?.pcpuCores
+        ? `${device.ecpuCores || 0} efficiency + ${device.pcpuCores || 0} performance CPU cores` : null;
+      const deviceParts = device ? [device.chipName, device.macModel, device.memoryGb ? `${device.memoryGb} GiB RAM` : null,
+        device.gpuCores ? `${device.gpuCores} GPU cores` : null, cpuCores]
+        .filter(value => typeof value === "string" && value.trim() || typeof value === "number") : [];
+      telemetryDevice.textContent = deviceParts.length ? `Discovered device: ${deviceParts.join(" · ")}` : "Device details unavailable from the current provider.";
+      const availableCount = readings.filter(isUsableReading).length;
+      telemetryStatus.textContent = `${availableCount} of ${readings.length} readings available · ${payload.provider || "local provider"}`;
     }
 
     function markStaleTelemetry() {
       const now = Date.now();
-      Object.values(telemetryCards).forEach(card => {
+      telemetryCards.forEach(card => {
         const sampledAt = Date.parse(card.dataset.sampledAt || "");
         if (card.dataset.status !== "available" || !Number.isFinite(sampledAt)) return;
         if (now - sampledAt <= readingFreshnessMs) return;
