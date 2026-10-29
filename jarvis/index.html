@@ -417,9 +417,9 @@
         storageStopButton.hidden = true;
         if (scan.status === "idle") return;
         const state = scan.status === "complete" ? "Complete" : scan.status === "partial" ? "Partial scan" : scan.status === "cancelled" ? "Stopped" : "Scan error";
-        const counts = `${scan.scannedFiles || 0} files · ${scan.scannedDirectories || 0} folders`;
+        const counts = `${scan.scannedVolumes?.length || 0} volumes · ${scan.scannedFiles || 0} files · ${scan.scannedDirectories || 0} folders`;
         const inaccessible = scan.unreadableEntries || scan.unreadableDirectories || scan.unreadableVolumes
-          ? ` · ${(scan.unreadableEntries || 0) + (scan.unreadableDirectories || 0) + (scan.unreadableVolumes || 0)} unreadable locations` : "";
+          ? ` · ${(scan.unreadableEntries || 0) + (scan.unreadableDirectories || 0) + (scan.unreadableVolumes || 0)} unreadable locations` : scan.usedHomeFallback ? " · volume discovery failed; home only" : "";
         storageScanStatus.textContent = `${state} · ${counts}${inaccessible}`;
         renderLargestItems(largestFolders, scan.topFolders);
         renderLargestItems(largestFiles, scan.topFiles);
@@ -508,7 +508,8 @@
       storageStopButton.disabled = true;
       storageScanStatus.textContent = "Stopping scan…";
       try {
-        await fetch("/api/storage-scan/stop", { method: "POST", cache: "no-store" });
+        const response = await fetch("/api/storage-scan/stop", { method: "POST", cache: "no-store" });
+        if (!response.ok && response.status !== 409) throw new Error("Stop request failed.");
       } catch {
         storageScanStatus.textContent = "Could not stop the scan. You can stop the local bridge with Control+C.";
       }
