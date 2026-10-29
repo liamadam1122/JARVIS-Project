@@ -14,7 +14,7 @@ type ReadingStatus = "available" | "unavailable" | "unsupported" | "stale" | "er
 type Reading = {
   metric: string;
   value: number | null;
-  unit: "V" | "°C" | "rpm" | "Mbps" | "status";
+  unit: "V" | "°C" | "rpm" | "Mbps" | "%" | "W" | "MHz" | "GiB" | "level";
   status: ReadingStatus;
   source: string | null;
   sampledAt: string | null; // ISO 8601 timestamp
@@ -37,6 +37,7 @@ Rules:
 - Keep input and output as separate metrics, with units and identified source hardware.
 - Device telemetry may expose internal voltage rails on some models, but those rails are not the same as wall-power or USB-C input/output.
 - Accurate external input/output voltage requires a compatible, calibrated measurement device and a documented protocol. Never infer it from charger status, battery percentage, or power draw.
+- Physical motherboard or connector-pin readings also need a board-specific pin map and a compatible meter. JARVIS must never probe unknown pins.
 - This first dashboard therefore reports both as unavailable until a supported source is connected.
 
 ### Temperature and fan speed
@@ -70,11 +71,9 @@ No model API is required for telemetry. No API keys, passwords, or persistent ac
 
 ## Delivery sequence
 
-1. **Local telemetry chapter (implemented):** keep the existing HTML demo; add the loopback-only bridge, best-effort Apple Silicon temperature/fan/thermal readings, and live network-interface throughput. Keep unavailable readings explicit. This Mac reported CPU/GPU temperatures and traffic; it reported no fan RPM, voltage measurement, or numeric thermal state in the verified sample.
+1. **Local telemetry chapter (implemented):** keep the existing HTML demo; add the loopback-only bridge and display every metric the Apple Silicon provider reports: CPU/GPU utilization, temperature and power; GPU frequency; RAM/swap use and power; Neural Engine power; individual fan RPM; device/core metadata; and every network interface, with the default interface highlighted. Keep unavailable readings explicit. This Mac reported CPU/GPU, memory and default-interface readings; it reported no fan RPM, voltage measurement or Neural Engine power. The provider does not expose thermal pressure.
 2. **Reliability and portability:** verify provider behavior across supported macOS versions and models, and add Windows/Linux adapters only when their data source and permission behavior are documented.
 3. **Internet speed test:** add only as a user-started action with a named provider and clear data-transfer notice; do not run at startup or in the background.
 4. **External voltage devices:** support only a specified, documented meter and validate input/output readings against a safe reference.
-
-Every chapter keeps unavailable, stale, permission-denied, and error states visible and preserves the previous working demo.
 
 Every chapter keeps unavailable, stale, permission-denied, and error states visible and preserves the previous working demo.
