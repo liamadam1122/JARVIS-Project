@@ -1,13 +1,17 @@
 # JARVIS Assistant — Build Plan
 
 ## Goal
-Build a futuristic personal AI assistant, starting as a small web app and adding capabilities safely one at a time.
+Build JARVIS as a local-first system intelligence assistant that understands the user's computer and explains it with evidence. Helping people build apps is not the product's core.
+
+## Product distinction
+The target is a time-aware, explainable computer model connecting hardware readings, processes, storage, network activity, and later installed extensions. Findings show their source, sample time, and coverage limits. JARVIS distinguishes facts from hypotheses and never claims overall health from incomplete evidence. Similar monitors and diagnostic assistants already exist, so do not claim nobody has built anything comparable. Differentiate through privacy-first operation, traceable evidence, change-over-time context, and user-approved actions.
 
 ## First version (MVP)
-- A clean, futuristic chat interface
-- Send a text message and show the assistant's reply
-- Loading state and readable error messages
-- API key kept in a local environment file, never committed to GitHub
+- A local system map for hardware, storage, and network readings.
+- Plain-language answers grounded in measurements, scan results, and timestamps.
+- Explicit unavailable, stale, unsupported, partial-scan, and permission-denied states.
+- Read-only inspection by default; ask before changing files, settings, or devices.
+- No model API key in the current local inventory chapter.
 
 ## Later versions
 1. Voice input and spoken replies
@@ -32,14 +36,17 @@ Run a basic app locally on the Mac before adding AI, voice, or account integrati
 
 ## Current chapter — local telemetry foundation
 - Keep `jarvis/index.html` as the existing demo; its replies are still hardcoded and no model is connected.
-- `jarvis/server.mjs` is an optional read-only bridge bound to `127.0.0.1`. It serves the page and telemetry endpoint only.
+- `jarvis/server.mjs` is an optional local bridge bound to `127.0.0.1`. It serves the page, read-only telemetry, a user-confirmed fixed speed test, and a user-confirmed storage scan; it exposes no arbitrary file or shell operations.
 - On supported Apple Silicon Macs, the bridge reports every metric exposed by the installed provider: CPU/GPU utilization, temperature and power; GPU frequency; RAM/swap usage and power; Neural Engine power; and each reported fan RPM. It also shows SoC model and core counts.
 - Network counters cover all detected interfaces, with the default interface highlighted. They show live traffic, distinct from the optional manually started Cloudflare speed test, which sends up to 6 MiB of test payload after a confirmation notice.
+- All detected mounted-volume capacity entries are shown. A user-confirmed scan reads names and size metadata under the home folder, including hidden entries, but does not read contents or upload/save the inventory. macOS-protected paths may produce a partial scan. File-size sums are approximate; APFS volume figures may overlap.
 - Voltage input/output and physical board-pin readings remain unavailable until a compatible, documented meter and safe pin map are supported.
 - No API key is needed for telemetry. Keep secrets out of Git; never add fan controls or arbitrary shell/device access.
 
 ## Next chapters
-1. Validate the local bridge on supported macOS versions and models; add only documented sensor providers and keep each reading timestamped.
-2. Add a documented external voltage meter adapter, if a compatible meter is available.
-3. Add separate Windows/Linux providers only where their sensor sources and permission requirements are clear.
-4. Decide separately whether to keep the local HTML app or migrate to Next.js; do not connect a model API until a secure server-side route and key handling are planned.
+1. Add process-level CPU, memory, disk I/O, and network attribution with documented macOS APIs; connect resource spikes to apps without guessing.
+2. Compare local snapshots over time and explain what changed, with an evidence trail and no automatic cleanup.
+3. Add supported extension/plugin and startup-item inventory with explicit permission states.
+4. Validate hardware coverage on supported Mac models; add separate Windows/Linux adapters only where data sources and permissions are documented.
+5. Add voltage-meter support only for a documented, calibrated device and pin map.
+6. Decide separately whether to keep the local HTML app or migrate frameworks. Do not connect a model API until secure server-side key handling and data minimization are planned.
