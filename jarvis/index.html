@@ -301,10 +301,11 @@
     }
 
     function renderTelemetry(payload) {
-      const readings = Array.isArray(payload.readings) ? payload.readings : [];
+      const readings = Array.isArray(payload.readings)
+        ? payload.readings.filter(reading => reading && typeof reading.metric === "string") : [];
       const networkReadings = readings.filter(reading => reading.metric.startsWith("network."));
       const hardwareReadings = readings.filter(reading => !reading.metric.startsWith("network."));
-      const interfaces = payload.capabilities?.networkInterfaces || [];
+      const interfaces = Array.isArray(payload.capabilities?.networkInterfaces) ? payload.capabilities.networkInterfaces : [];
       const defaultInterface = payload.capabilities?.defaultNetworkInterface;
       const defaultCards = defaultInterface
         ? networkReadings.filter(reading => reading.label?.startsWith(`${defaultInterface} `)).map(createMetricCard)
