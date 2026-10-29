@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080d16">
+  <title>JARVIS — Personal AI</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #080d16;
+      --panel: rgba(15, 24, 38, .82);
+      --panel-strong: #101a29;
+      --line: rgba(141, 177, 212, .15);
+      --text: #edf5ff;
+      --muted: #8c9db2;
+      --cyan: #59dcf4;
+      --blue: #5b8cff;
+      --green: #74f0c1;
+      --shadow: 0 24px 80px rgba(0, 0, 0, .35);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background:
+        radial-gradient(ellipse at 70% 14%, rgba(31, 102, 155, .22), transparent 34rem),
+        radial-gradient(ellipse at 14% 88%, rgba(58, 48, 142, .17), transparent 31rem),
+        var(--bg);
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    button, textarea { font: inherit; }
+    button { color: inherit; }
+    .shell { min-height: 100vh; display: grid; grid-template-columns: 250px minmax(0, 1fr); }
+    .sidebar {
+      padding: 26px 18px; border-right: 1px solid var(--line);
+      background: rgba(7, 12, 21, .72); display: flex; flex-direction: column; gap: 28px;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; padding: 0 8px; }
+    .brand-mark {
+      width: 34px; height: 34px; border: 1px solid rgba(89, 220, 244, .48);
+      border-radius: 50%; display: grid; place-items: center; color: var(--cyan);
+      box-shadow: 0 0 24px rgba(89, 220, 244, .15); font-size: 13px; letter-spacing: 1px;
+    }
+    .brand-name { font-size: 14px; font-weight: 700; letter-spacing: .2em; }
+    .brand-sub { display: block; color: var(--muted); font-size: 10px; letter-spacing: .15em; margin-top: 1px; }
+    .new-chat {
+      border: 1px solid var(--line); background: rgba(255,255,255,.035); border-radius: 12px;
+      padding: 11px 13px; text-align: left; cursor: pointer; transition: .2s;
+    }
+    .new-chat:hover, .suggestion:hover { border-color: rgba(89,220,244,.45); background: rgba(89,220,244,.07); }
+    .section-label { color: #65778e; font-size: 10px; letter-spacing: .18em; text-transform: uppercase; padding: 0 9px; }
+    .history { display: grid; gap: 5px; }
+    .history-item { color: var(--muted); padding: 9px; border-radius: 9px; font-size: 13px; }
+    .history-item.active { color: var(--text); background: rgba(255,255,255,.055); }
+    .status-card {
+      margin-top: auto; border: 1px solid var(--line); border-radius: 13px; padding: 13px;
+      color: var(--muted); font-size: 11px; background: rgba(255,255,255,.025);
+    }
+    .status-dot { display: inline-block; height: 7px; width: 7px; border-radius: 50%; background: var(--green); margin-right: 7px; box-shadow: 0 0 10px rgba(116,240,193,.7); }
+    main { min-width: 0; display: flex; flex-direction: column; min-height: 100vh; }
+    .topbar { height: 70px; padding: 0 34px; border-bottom: 1px solid var(--line); display:flex; align-items:center; justify-content:space-between; }
+    .top-title { font-size: 13px; color: #c3d2e3; letter-spacing: .04em; }
+    .mode { color: var(--muted); font-size: 11px; border: 1px solid var(--line); border-radius: 99px; padding: 6px 10px; }
+    .content { width: min(850px, 100%); margin: 0 auto; padding: 48px 28px 25px; display: flex; flex-direction: column; flex: 1; }
+    .welcome { text-align: center; margin: 18px 0 32px; }
+    .orb {
+      margin: 0 auto 20px; width: 82px; height: 82px; border-radius: 50%;
+      border: 1px solid rgba(89,220,244,.54); display:grid; place-items:center; position:relative;
+      background: radial-gradient(circle at 50% 50%, rgba(89,220,244,.22), rgba(20,55,90,.12) 55%, transparent 70%);
+      box-shadow: 0 0 35px rgba(47,191,231,.12), inset 0 0 24px rgba(89,220,244,.1);
+    }
+    .orb:before, .orb:after { content:""; position:absolute; border:1px solid rgba(89,220,244,.2); border-radius:50%; inset:-8px 8px; transform:rotate(38deg); }
+    .orb:after { inset:8px -8px; transform:rotate(-38deg); border-color:rgba(91,140,255,.28); }
+    .orb-core { width: 13px; height:13px; background:var(--cyan); border-radius:50%; box-shadow:0 0 19px var(--cyan); }
+    h1 { font-size: clamp(27px, 4vw, 38px); line-height:1.15; letter-spacing:-.04em; margin:0; }
+    .welcome p { color:var(--muted); margin:10px 0 0; }
+    .suggestions { display:grid; grid-template-columns:repeat(2, 1fr); gap:10px; margin:0 auto; width:min(650px,100%); }
+    .suggestion {
+      text-align:left; cursor:pointer; border:1px solid var(--line); border-radius:12px;
+      background:rgba(255,255,255,.025); padding:13px 15px; color:#c7d7e9; font-size:13px; transition:.2s;
+    }
+    .chat { display:grid; gap:18px; padding:0 0 22px; }
+    .message { display:flex; gap:12px; align-items:flex-start; animation: rise .25s ease-out; }
+    @keyframes rise { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+    .avatar { flex:0 0 28px; height:28px; display:grid; place-items:center; border-radius:50%; font-size:10px; }
+    .avatar.jarvis { color:var(--cyan); border:1px solid rgba(89,220,244,.38); }
+    .avatar.you { color:#d9e4ff; background:rgba(91,140,255,.22); }
+    .bubble { padding:3px 0; color:#d7e2ef; white-space:pre-wrap; }
+    .bubble.user { color:#f3f7ff; }
+    .composer-wrap { margin-top:auto; position:sticky; bottom:0; padding:16px 0 8px; background:linear-gradient(transparent, var(--bg) 18%); }
+    .composer { border:1px solid rgba(130,174,211,.25); border-radius:16px; background:rgba(14,23,36,.94); box-shadow:var(--shadow); padding:12px; }
+    textarea {
+      resize:vertical; min-height:52px; max-height:150px; width:100%; border:0; outline:0;
+      color:var(--text); background:transparent; padding:5px 7px;
+    }
+    textarea::placeholder { color:#71839a; }
+    .composer-footer { display:flex; align-items:center; justify-content:space-between; padding:4px 2px 0 7px; }
+    .hint { color:#71839a; font-size:10px; }
+    .send {
+      border:0; border-radius:10px; color:#07121c; background:linear-gradient(120deg, var(--cyan), #8bdfff);
+      padding:8px 15px; cursor:pointer; font-weight:700; font-size:12px;
+    }
+    .send:disabled { opacity:.55; cursor:wait; }
+    .note { text-align:center; color:#687b91; font-size:10px; padding:9px 0 0; }
+    @media (max-width:700px) {
+      .shell { grid-template-columns:1fr; }
+      .sidebar { display:none; }
+      .topbar { height:58px; padding:0 18px; }
+      .content { padding:32px 18px 18px; }
+      .suggestions { grid-template-columns:1fr; }
+      .welcome { margin-top:12px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">J</div>
+        <div><span class="brand-name">J.A.R.V.I.S.</span><span class="brand-sub">PERSONAL SYSTEM</span></div>
+      </div>
+      <button class="new-chat" id="newChat">＋ &nbsp; New conversation</button>
+      <div>
+        <div class="section-label">Workspace</div>
+        <div class="history" style="margin-top:9px">
+          <div class="history-item active">◉ &nbsp; Assistant</div>
+          <div class="history-item">⌁ &nbsp; Memory</div>
+          <div class="history-item">▦ &nbsp; Projects</div>
+        </div>
+      </div>
+      <div class="status-card"><span class="status-dot"></span>Prototype ready<br><span style="padding-left:14px">Local demo · no account connected</span></div>
+    </aside>
+    <main>
+      <header class="topbar"><div class="top-title">PERSONAL AI ASSISTANT</div><div class="mode">DEMO MODE</div></header>
+      <section class="content">
+        <div class="welcome" id="welcome">
+          <div class="orb"><div class="orb-core"></div></div>
+          <h1>At your service.</h1>
+          <p>Start with a question. We’ll build the rest one safe step at a time.</p>
+        </div>
+        <div class="chat" id="chat" aria-live="polite"></div>
+        <div class="suggestions" id="suggestions">
+          <button class="suggestion">Help me plan my first app</button>
+          <button class="suggestion">Explain a coding idea simply</button>
+          <button class="suggestion">Help me organize today's tasks</button>
+          <button class="suggestion">What should I learn next?</button>
+        </div>
+        <div class="composer-wrap">
+          <form class="composer" id="form">
+            <textarea id="input" rows="2" aria-label="Message JARVIS" placeholder="Message JARVIS…"></textarea>
+            <div class="composer-footer"><span class="hint">Return to send · Shift + Return for a new line</span><button class="send" id="send" type="submit">Send&nbsp; ↗</button></div>
+          </form>
+          <div class="note">This is a local interface prototype. Replies are demo responses; no AI service is connected yet.</div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script>
+    const form = document.getElementById("form");
+    const input = document.getElementById("input");
+    const chat = document.getElementById("chat");
+    const welcome = document.getElementById("welcome");
+    const suggestions = document.getElementById("suggestions");
+    const send = document.getElementById("send");
+
+    function addMessage(text, who) {
+      const row = document.createElement("div");
+      row.className = "message";
+      const avatar = document.createElement("div");
+      avatar.className = "avatar " + (who === "you" ? "you" : "jarvis");
+      avatar.textContent = who === "you" ? "YOU" : "J";
+      const bubble = document.createElement("div");
+      bubble.className = "bubble " + (who === "you" ? "user" : "");
+      bubble.textContent = text;
+      row.append(avatar, bubble);
+      chat.append(row);
+      row.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      return bubble;
+    }
+
+    function demoReply(message) {
+      const text = message.toLowerCase();
+      if (text.includes("plan") || text.includes("app")) {
+        return "Let’s keep the first version small. Pick one useful job, describe what the screen should show, and build a working prototype before adding accounts, voice, or integrations. What do you want your first version to help you do?";
+      }
+      if (text.includes("learn") || text.includes("coding") || text.includes("code")) {
+        return "A good next step is to learn what each file does, then change one small thing and see the result. I can explain the code in plain language and help you decide what to try next.";
+      }
+      if (text.includes("task") || text.includes("today")) {
+        return "Let’s choose three things: one must-do, one quick win, and one thing you can leave for later. Tell me what’s on your list and I’ll help sort it.";
+      }
+      return "I’ve got your message. This prototype isn’t connected to an AI yet, so I can’t generate a real answer here. The next build step is connecting a model through a secure server route.";
+    }
+
+    function submitMessage(text) {
+      const message = text.trim();
+      if (!message || send.disabled) return;
+      welcome.hidden = true;
+      suggestions.hidden = true;
+      addMessage(message, "you");
+      input.value = "";
+      send.disabled = true;
+      const reply = addMessage("Thinking…", "jarvis");
+      window.setTimeout(() => {
+        reply.textContent = demoReply(message);
+        send.disabled = false;
+        input.focus();
+      }, 550);
+    }
+
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+      submitMessage(input.value);
+    });
+    input.addEventListener("keydown", event => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        form.requestSubmit();
+      }
+    });
+    suggestions.addEventListener("click", event => {
+      const button = event.target.closest("button");
+      if (button) submitMessage(button.textContent);
+    });
+    document.getElementById("newChat").addEventListener("click", () => {
+      chat.replaceChildren();
+      welcome.hidden = false;
+      suggestions.hidden = false;
+      input.value = "";
+      input.focus();
+    });
+  </script>
+</body>
+</html>
