@@ -14,12 +14,12 @@ pnpm start
 
 Open http://127.0.0.1:4173 in a browser. Stop the bridge with Control+C.
 
-The server binds only to `127.0.0.1`. It serves the page and read-only telemetry, plus same-origin actions for a fixed, user-confirmed speed test and a user-confirmed home-folder metadata scan. It rejects other hosts, cross-origin requests, arbitrary paths, and shell commands.
+The server binds only to `127.0.0.1`. It serves the page and read-only telemetry, plus same-origin actions for a fixed, user-confirmed speed test and a user-confirmed mounted-volume metadata scan. It rejects other hosts, cross-origin requests, arbitrary paths, and shell commands.
 
 ## What it can report
 
 - Capacity and used/free space for detected mounted volumes. APFS volumes may share capacity, so entries can overlap.
-- Largest files and folders under the home folder after you confirm a scan. It includes hidden entries, skips symbolic links, and reports protected paths as inaccessible. JARVIS reads names and size metadata only; it does not open contents or upload/save the inventory. Nested folder totals overlap, and file-size sums are approximate logical sizes.
+- Largest files and folders across accessible mounted volumes after you confirm a scan, including hidden entries and any mounted removable or network volumes. It skips symbolic links, virtual filesystems, and nested mount boundaries, and reports protected paths as inaccessible. JARVIS reads names and size metadata only; it does not open contents or upload/save the inventory. Nested folder totals overlap, and file-size sums are approximate logical sizes.
 
 - On Apple Silicon, CPU/GPU utilization, temperature and power; GPU frequency; RAM/swap use and power; Neural Engine power; and each fan RPM when the provider reports them. Device model and core counts are shown as inventory metadata.
 - Live receive/send traffic for all detected network interfaces, with the default interface highlighted. These rates are current traffic, not an internet speed test or the connection's maximum capacity.
