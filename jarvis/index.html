@@ -456,10 +456,13 @@
       const device = payload.device;
       const cpuCores = device?.ecpuCores || device?.pcpuCores
         ? `${device.ecpuCores || 0} efficiency + ${device.pcpuCores || 0} performance CPU cores` : null;
-      const deviceParts = device ? [device.chipName, device.macModel, device.memoryGb ? `${device.memoryGb} GiB RAM` : null,
-        device.gpuCores ? `${device.gpuCores} GPU cores` : null, cpuCores]
+      const deviceParts = device ? [device.macModel, device.chipName ? `${device.chipName} chip` : null,
+        Array.isArray(device.gpuModels) && device.gpuModels.length ? `${device.gpuModels.join(", ")} GPU` : null,
+        device.gpuCores ? `${device.gpuCores} GPU cores` : null,
+        device.memoryGb ? `${device.memoryGb} GiB unified memory` : null,
+        device.cpuBrand, device.cpuCores ? `${device.cpuCores} CPU cores` : cpuCores]
         .filter(value => typeof value === "string" && value.trim() || typeof value === "number") : [];
-      telemetryDevice.textContent = deviceParts.length ? `Discovered device: ${deviceParts.join(" · ")}` : "Device details unavailable from the current provider.";
+      telemetryDevice.textContent = deviceParts.length ? `Discovered hardware: ${deviceParts.join(" · ")}` : "Device details unavailable from the current provider.";
       renderStorageVolumes(payload.storageVolumes);
       const availableCount = readings.filter(isUsableReading).length;
       telemetryStatus.textContent = `${availableCount} of ${readings.length} readings available · ${payload.provider || "local provider"}`;
@@ -555,11 +558,27 @@
     function demoReply(message) {
       const text = message.toLowerCase();
       const readings = Array.isArray(latestTelemetry?.readings) ? latestTelemetry.readings : [];
+      const device = latestTelemetry?.device || {};
       const fresh = reading => isUsableReading(reading) && Date.now() - Date.parse(reading.sampledAt) <= readingFreshnessMs;
       const sampleTime = reading => new Date(reading.sampledAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
       const describe = reading => fresh(reading)
         ? `${metricLabel(reading)}: ${formatReading(reading.value, reading.unit)} (sampled ${sampleTime(reading)}; ${reading.source}).`
         : `${metricLabel(reading)}: ${reading.status === "unsupported" ? "unsupported" : "unavailable"}${reading.detail ? ` — ${reading.detail}` : ""}.`;
+
+      if (/\b(optim\w*|faster|speed up|improv\w*|unlock\w*|overclock\w*|performance)\b/.test(text)) {
+        const hardware = [device.macModel, device.chipName, device.gpuModels?.join(", ")].filter(Boolean).join(" · ");
+        if (device.macModel || device.chipName) {
+          return `For this Mac${hardware ? ` (${hardware})` : ""}, JARVIS has not changed any settings. Apple silicon uses an integrated GPU and macOS manages its power automatically; there is no general GPU-unlock switch. For a game or creative app, try its own render resolution or graphics-quality controls, keep the laptop on a hard surface with vents clear, and compare the same scene before and after. The readings above show what this Mac exposes; temperature and fan readings may not be available. This is local rule-based guidance, not connected AI.`;
+        }
+        return "JARVIS has not changed any settings. Safe tuning depends on the exact laptop, GPU, cooling, and power adapter. Use the laptop maker’s or GPU maker’s supported tool, change one setting at a time, and compare the same workload. A universal ‘unlock’ or guaranteed 2× gain is not a safe assumption. This is local rule-based guidance, not connected AI.";
+      }
+      if (/\b(what (mac|computer|chip|gpu)|which (mac|computer|chip|gpu)|my (mac|computer|chip|gpu))\b/.test(text)) {
+        const hardware = [device.macModel, device.chipName ? `${device.chipName} chip` : null,
+          device.gpuModels?.length ? `${device.gpuModels.join(", ")} GPU${device.gpuCores ? ` (${device.gpuCores} cores)` : ""}` : null,
+          device.memoryGb ? `${device.memoryGb} GiB unified memory` : null,
+          device.cpuCores ? `${device.cpuCores} CPU cores` : null].filter(Boolean).join(" · ");
+        return hardware ? `JARVIS identified: ${hardware}. Live readings are listed on the dashboard; any missing sensor is marked unavailable. This inventory is read locally and is not sent to an AI service.` : "The local provider has not identified this device yet. Check that the JARVIS bridge is running and refresh the dashboard.";
+      }
 
       if (text.includes("space") || text.includes("disk") || text.includes("folder") || text.includes("large file")) {
         if (!latestStorageScan || latestStorageScan.status === "idle") return "I haven’t scanned mounted storage yet. Use “Scan mounted storage” to check names and size metadata locally; I won’t open file contents."
@@ -583,7 +602,9 @@
       }
       if (text.includes("gpu")) {
         const gpu = readings.filter(reading => reading.metric.startsWith("gpu.") || reading.metric === "temperature.gpu");
-        return gpu.length ? gpu.map(describe).join(" ") : "GPU readings are not exposed by the current sensor provider.";
+        const identity = [device.gpuModels?.join(", "), device.gpuCores ? `${device.gpuCores} reported GPU cores` : null]
+          .filter(Boolean).join(" · ");
+        return `${identity ? `Detected GPU: ${identity}. ` : "GPU model is not exposed by the current provider. "}${gpu.length ? gpu.map(describe).join(" ") : "Live GPU readings are not exposed by the current sensor provider."}`;
       }
       if (text.includes("temperature") || text.includes("hot") || text.includes("thermal")) {
         const temps = readings.filter(reading => reading.metric.startsWith("temperature.") || reading.metric === "thermal.pressure");
