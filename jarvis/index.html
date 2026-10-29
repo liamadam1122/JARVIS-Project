@@ -284,6 +284,7 @@
       name.textContent = metricLabel(reading);
       const value = document.createElement("span");
       value.className = "metric-value";
+      value.dataset.value = "true";
       const usable = isUsableReading(reading);
       const status = usable ? "available" : reading.status === "available" ? "error" : reading.status || "unavailable";
       const showStaleValue = reading.status === "stale" && typeof reading.value === "number" && Number.isFinite(reading.value);
@@ -297,6 +298,7 @@
         ? formatReading(reading.value, reading.unit) : "Unavailable";
       const detail = document.createElement("span");
       detail.className = "metric-detail";
+      detail.dataset.detail = "true";
       detail.textContent = usable || reading.status !== "available"
         ? reading.detail || `Source: ${reading.source || "unspecified"}`
         : "The provider omitted a valid number, source, or sample time; this value is hidden.";
