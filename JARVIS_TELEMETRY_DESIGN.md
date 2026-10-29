@@ -48,9 +48,9 @@ Rules:
 
 ### Storage and files
 
-- Mounted-volume capacity and user-home folder scans are separate measurements. APFS volumes can share a container, so reported capacity entries may overlap.
+- Mounted-volume capacity and file-tree scans are separate measurements. APFS volumes can share a container, so reported capacity entries may overlap.
 - A folder scan reads directory entries and file metadata only. It does not open file contents, persist the inventory, or send it to a remote service.
-- The current scanner is user-started and limited to the home directory. It includes hidden entries, skips symbolic links, and reports inaccessible paths as a partial result instead of bypassing macOS protections.
+- The current scanner is user-started and walks every accessible mounted volume, including hidden entries and mounted removable or network volumes. It skips symbolic links and nested mount boundaries, and reports inaccessible paths as a partial result instead of bypassing OS protections. Virtual filesystems are excluded.
 - File-size sums are approximate logical bytes. Nested folder totals overlap, and hard links, sparse files, compression, and APFS clones can make the sum differ from actual disk blocks used.
 - Do not delete files, clear caches, or change permissions as part of a scan.
 
@@ -73,14 +73,14 @@ Discovery is explicit and read-only. Enumerate supported providers and their dec
 
 ## Local security boundary
 
-A browser-only HTML file cannot directly read host sensors. The current chapter adds a small local Node bridge bound only to loopback. It serves the JARVIS page and read-only telemetry plus explicit same-origin actions for a fixed speed test and a home-folder metadata scan. It rejects unexpected Host and Origin headers, exposes no arbitrary path input or shell execution, and does not read file contents. The Apple Silicon reader is optional; network counters remain independent if sensor support is missing. Stop the bridge with Control+C to end sensor access.
+A browser-only HTML file cannot directly read host sensors. The current chapter adds a small local Node bridge bound only to loopback. It serves the JARVIS page and read-only telemetry plus explicit same-origin actions for a fixed speed test and a mounted-volume metadata scan. It rejects unexpected Host and Origin headers, exposes no arbitrary path input or shell execution, and does not read file contents. The Apple Silicon reader is optional; network counters remain independent if sensor support is missing. Stop the bridge with Control+C to end sensor access.
 
 No model API is required for telemetry. No API keys, passwords, or persistent access tokens belong in the repository.
 
 ## Delivery sequence
 
 1. **Local system inventory chapter (in progress):** keep the existing HTML demo; add the loopback-only bridge and display every metric the Apple Silicon provider reports: CPU/GPU utilization, temperature and power; GPU frequency; RAM/swap use and power; Neural Engine power; individual fan RPM; device/core metadata; and every network interface, with the default interface highlighted. Keep unavailable readings explicit. This Mac reported CPU/GPU, memory and default-interface readings; it reported no fan RPM, voltage measurement or Neural Engine power. The provider does not expose thermal pressure.
-2. **Storage inventory (implemented, limited):** show capacity for mounted volumes and let the user scan the home folder for large files and folders. Read names and metadata only, skip links, expose inaccessible-path counts, and label logical-size caveats.
+2. **Storage inventory (implemented):** show capacity for mounted volumes and let the user scan accessible mounted roots for large files and folders. Read names and metadata only, skip links and nested mount boundaries, expose inaccessible-path counts, and label logical-size caveats.
 3. **Internet speed test (implemented):** the user starts a short Cloudflare test and confirms a notice describing up to 6 MiB of test payload, possible connection overhead, and Cloudflare's collection of completed measurements for aggregate insights. A local endpoint uses fixed URLs, caps transfer, applies a timeout and cooldown, and does not save results. Do not run at startup or in the background.
 4. **Cross-layer diagnosis:** add documented per-process attribution and time comparisons, then state likely causes only when multiple fresh readings support them.
 5. **Reliability and portability:** verify provider behavior across supported macOS versions and models, and add Windows/Linux adapters only when their data source and permission behavior are documented.
