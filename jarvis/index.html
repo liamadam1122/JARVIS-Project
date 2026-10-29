@@ -96,6 +96,8 @@
     .metric-card { border: 1px solid var(--line); border-radius: 10px; padding: 11px; min-width: 0; }
     .metric-name { display: block; color: var(--muted); font-size: 11px; }
     .metric-value { display: block; margin-top: 5px; color: #d7e2ef; font-size: 13px; font-weight: 650; }
+    .metric-value[data-state="available"] { color: var(--green); }
+    .metric-value[data-state="stale"] { color: #ffd27a; }
     .metric-detail { display: block; margin-top: 3px; color: #71839a; font-size: 10px; }
     .chat { display:grid; gap:18px; padding:0 0 22px; }
     .message { display:flex; gap:12px; align-items:flex-start; animation: rise .25s ease-out; }
@@ -166,40 +168,40 @@
         <section class="telemetry" aria-label="System telemetry">
           <div class="telemetry-head">
             <span class="telemetry-title">SYSTEM TELEMETRY</span>
-            <span class="telemetry-state">Local sensor reader not connected</span>
+            <span class="telemetry-state" id="telemetryStatus" role="status">Local telemetry bridge not connected</span>
           </div>
           <div class="metric-grid">
-            <div class="metric-card">
+            <div class="metric-card" id="voltageInputCard">
               <span class="metric-name">Voltage input</span>
-              <span class="metric-value">Unavailable</span>
-              <span class="metric-detail">Needs a supported, identified input sensor</span>
+              <span class="metric-value" data-value>Unavailable</span>
+              <span class="metric-detail" data-detail>Needs a supported input voltage meter</span>
             </div>
-            <div class="metric-card">
+            <div class="metric-card" id="voltageOutputCard">
               <span class="metric-name">Voltage output</span>
-              <span class="metric-value">Unavailable</span>
-              <span class="metric-detail">Needs a supported, identified output sensor</span>
+              <span class="metric-value" data-value>Unavailable</span>
+              <span class="metric-detail" data-detail>Needs a supported output voltage meter</span>
             </div>
-            <div class="metric-card">
+            <div class="metric-card" id="temperatureCard">
               <span class="metric-name">Temperature</span>
-              <span class="metric-value">Unavailable</span>
-              <span class="metric-detail">No temperature reading is being reported</span>
+              <span class="metric-value" data-value>Unavailable</span>
+              <span class="metric-detail" data-detail>Waiting for a supported local sensor reader</span>
             </div>
-            <div class="metric-card">
+            <div class="metric-card" id="fanCard">
               <span class="metric-name">Fan speed</span>
-              <span class="metric-value">Unavailable</span>
-              <span class="metric-detail">RPM needs a supported local sensor reader</span>
+              <span class="metric-value" data-value>Unavailable</span>
+              <span class="metric-detail" data-detail>Read-only RPM readings when hardware reports them</span>
             </div>
-            <div class="metric-card">
-              <span class="metric-name">Internet speed</span>
-              <span class="metric-value">Not measured</span>
-              <span class="metric-detail">No speed test is running</span>
+            <div class="metric-card" id="networkCard">
+              <span class="metric-name">Live network traffic</span>
+              <span class="metric-value" data-value>Not measured</span>
+              <span class="metric-detail" data-detail>Current transfer rate, not an internet speed test</span>
             </div>
           </div>
         </section>
         <div class="composer-wrap">
           <form class="composer" id="form">
             <textarea id="input" rows="2" aria-label="Message JARVIS" placeholder="Message JARVIS…"></textarea>
-            <div class="composer-footer"><span class="hint">Return to send · Shift + Return for a new line</span><button class="send" id="send" type="submit">Transmit&nbsp; ↗</button></div>
+            <div class="composer-footer"><span class="hint">Return to send · Shift + Return for a new line</span><button class="send" id="send" type="submit">Transmit</button></div>
           </form>
           <div class="note">This is a local interface prototype. Replies are demo responses; no AI service is connected yet.</div>
         </div>
@@ -213,6 +215,124 @@
     const welcome = document.getElementById("welcome");
     const suggestions = document.getElementById("suggestions");
     const send = document.getElementById("send");
+    const telemetryStatus = document.getElementById("telemetryStatus");
+    const telemetryCards = {
+      voltageInput: document.getElementById("voltageInputCard"),
+      voltageOutput: document.getElementById("voltageOutputCard"),
+      temperature: document.getElementById("temperatureCard"),
+      fan: document.getElementById("fanCard"),
+      network: document.getElementById("networkCard"),
+    };
+    const lastTelemetry = new Map();
+    const readingFreshnessMs = 12000;
+
+    function setTelemetryCard(card, value, status, detail, sampledAt = null) {
+      const valueNode = card.querySelector("[data-value]");
+      const detailNode = card.querySelector("[data-detail]");
+      valueNode.textContent = value;
+      valueNode.dataset.state = status;
+      valueNode.dataset.lastValue = value;
+      detailNode.textContent = detail;
+      card.dataset.sampledAt = sampledAt || "";
+      card.dataset.lastDetail = detail;
+      card.dataset.status = status;
+    }
+
+    function formatMbps(value) {
+      return value >= 100 ? value.toFixed(0) : value >= 10 ? value.toFixed(1) : value.toFixed(2);
+    }
+
+    function renderTelemetry(payload) {
+      const readings = new Map((payload.readings || []).map(reading => [reading.metric, reading]));
+      const voltageIn = readings.get("voltage.input");
+      const voltageOut = readings.get("voltage.output");
+      const cpu = readings.get("temperature.cpu");
+      const gpu = readings.get("temperature.gpu");
+      const fanReadings = [...readings.entries()]
+        .filter(([metric]) => metric === "fan.rpm" || metric.startsWith("fan.rpm."));
+      const download = readings.get("network.download");
+      const upload = readings.get("network.upload");
+
+      setTelemetryCard(
+        telemetryCards.voltageInput,
+        "Unavailable",
+        "unavailable",
+        voltageIn?.detail || "No compatible input voltage meter is connected."
+      );
+      setTelemetryCard(
+        telemetryCards.voltageOutput,
+        "Unavailable",
+        "unavailable",
+        voltageOut?.detail || "No compatible output voltage meter is connected."
+      );
+
+      const temperatures = [cpu, gpu].filter(reading => reading?.status === "available");
+      if (temperatures.length) {
+        const value = temperatures.map(reading => {
+          const label = reading.metric.endsWith(".cpu") ? "CPU" : "GPU";
+          return `${label} ${reading.value.toFixed(1)}°C`;
+        }).join(" · ");
+        const sampledAt = temperatures.map(reading => reading.sampledAt).filter(Boolean).sort().at(-1);
+        const detail = `Source: ${temperatures[0].source || "local sensor"}`;
+        setTelemetryCard(telemetryCards.temperature, value, "available", detail, sampledAt);
+      } else {
+        const reason = cpu?.detail || gpu?.detail || "No temperature sensor reading is available.";
+        setTelemetryCard(telemetryCards.temperature, "Unavailable", "unavailable", reason);
+      }
+
+      const availableFans = fanReadings.filter(([, reading]) => reading.status === "available");
+      if (availableFans.length) {
+        const value = availableFans.map(([metric, reading]) => {
+          const name = metric.startsWith("fan.rpm.") ? metric.slice("fan.rpm.".length) : "Fan";
+          return `${name} ${Math.round(reading.value)} RPM`;
+        }).join(" · ");
+        const sampledAt = availableFans.map(([, reading]) => reading.sampledAt).filter(Boolean).sort().at(-1);
+        const source = availableFans[0][1].source || "local sensor";
+        setTelemetryCard(telemetryCards.fan, value, "available", `Read-only source: ${source}`, sampledAt);
+      } else {
+        const detail = fanReadings.find(([, reading]) => reading.detail)?.[1].detail || "No fan sensor was reported.";
+        setTelemetryCard(telemetryCards.fan, "Unavailable", "unavailable", detail);
+      }
+
+      if (download?.status === "available" || upload?.status === "available") {
+        const down = download?.status === "available" ? `↓ ${formatMbps(download.value)} Mbps` : "↓ unavailable";
+        const up = upload?.status === "available" ? `↑ ${formatMbps(upload.value)} Mbps` : "↑ unavailable";
+        const sampledAt = [download?.sampledAt, upload?.sampledAt].filter(Boolean).sort().at(-1);
+        setTelemetryCard(telemetryCards.network, `${down} · ${up}`, "available", download?.detail || upload?.detail || "Current interface traffic.", sampledAt);
+      } else {
+        const reason = download?.detail || upload?.detail || "Waiting for network counters.";
+        setTelemetryCard(telemetryCards.network, "Not measured", "unavailable", reason);
+      }
+
+      telemetryStatus.textContent = payload.state === "unavailable"
+        ? "Connected · readings unavailable"
+        : "Connected · read-only local sensors";
+    }
+
+    function markStaleTelemetry() {
+      const now = Date.now();
+      Object.values(telemetryCards).forEach(card => {
+        const sampledAt = Date.parse(card.dataset.sampledAt || "");
+        if (card.dataset.status !== "available" || !Number.isFinite(sampledAt)) return;
+        if (now - sampledAt <= readingFreshnessMs) return;
+        const valueNode = card.querySelector("[data-value]");
+        valueNode.textContent = `Stale · ${valueNode.dataset.lastValue}`;
+        valueNode.dataset.state = "stale";
+        card.querySelector("[data-detail]").textContent = card.dataset.lastDetail + " · Waiting for a fresh reading.";
+        card.dataset.status = "stale";
+      });
+    }
+
+    async function refreshTelemetry() {
+      try {
+        const response = await fetch("/api/telemetry", { cache: "no-store" });
+        if (!response.ok) throw new Error("Local telemetry request failed.");
+        renderTelemetry(await response.json());
+      } catch {
+        telemetryStatus.textContent = "Local telemetry bridge not running";
+        markStaleTelemetry();
+      }
+    }
 
     function addMessage(text, who) {
       const row = document.createElement("div");
@@ -280,6 +400,9 @@
       input.value = "";
       input.focus();
     });
+    refreshTelemetry();
+    window.setInterval(refreshTelemetry, 4000);
+    window.setInterval(markStaleTelemetry, 1000);
   </script>
 </body>
 </html>
