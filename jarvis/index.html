@@ -217,9 +217,10 @@
           <div class="metric-grid" id="storageVolumeGrid" aria-live="polite"></div>
           <div class="speed-test" style="margin-top:15px">
             <div class="telemetry-title">LARGEST FOLDERS AND FILES</div>
-            <p class="speed-test-copy">Scan your home folder, including hidden items, to find large folders and files. JARVIS reads names and size metadata only; it does not open file contents, save the results, or send them anywhere. Protected locations may be skipped by macOS. File sizes are approximate logical totals; nested folders overlap and APFS or hard-link behavior can differ from physical disk use.</p>
+            <p class="speed-test-copy">Scan every accessible mounted volume, including hidden items and removable or network storage, to find large folders and files. JARVIS reads names and size metadata only; it does not open file contents, save the results, or send them anywhere. Protected locations may be skipped by macOS. Network and removable volumes are included if mounted; unmount any you do not want scanned. File sizes are approximate logical totals; nested folders overlap and APFS or hard-link behavior can differ from physical disk use.</p>
             <div class="speed-test-row">
-              <button class="speed-test-button" id="storageScanButton" type="button">Scan home folder</button>
+              <button class="speed-test-button" id="storageScanButton" type="button">Scan mounted storage</button>
+              <button class="speed-test-button" id="storageStopButton" type="button" hidden>Stop scan</button>
               <span class="storage-status" id="storageScanStatus" role="status">Not scanned</span>
             </div>
             <div class="storage-lists">
@@ -256,6 +257,7 @@
     const storageVolumeGrid = document.getElementById("storageVolumeGrid");
     const storageVolumeStatus = document.getElementById("storageVolumeStatus");
     const storageScanButton = document.getElementById("storageScanButton");
+    const storageStopButton = document.getElementById("storageStopButton");
     const storageScanStatus = document.getElementById("storageScanStatus");
     const largestFolders = document.getElementById("largestFolders");
     const largestFiles = document.getElementById("largestFiles");
@@ -405,17 +407,20 @@
         const scan = await response.json();
         latestStorageScan = scan;
         if (scan.status === "scanning") {
-          storageScanStatus.textContent = `Scanning home folder · ${scan.scannedEntries || 0} entries · ${scan.scannedFiles || 0} files`;
+          storageScanStatus.textContent = `Scanning ${scan.scannedVolumes?.length || 0} mounted volumes · ${scan.scannedEntries || 0} entries · ${scan.scannedFiles || 0} files`;
           storageScanButton.disabled = true;
+          storageStopButton.hidden = false;
+          storageStopButton.disabled = false;
           return;
         }
         storageScanButton.disabled = false;
+        storageStopButton.hidden = true;
         if (scan.status === "idle") return;
-        const state = scan.status === "complete" ? "Complete" : scan.status === "partial" ? "Partial scan" : "Scan error";
+        const state = scan.status === "complete" ? "Complete" : scan.status === "partial" ? "Partial scan" : scan.status === "cancelled" ? "Stopped" : "Scan error";
         const counts = `${scan.scannedFiles || 0} files · ${scan.scannedDirectories || 0} folders`;
-        const inaccessible = scan.unreadableEntries || scan.unreadableDirectories
-          ? ` · ${(scan.unreadableEntries || 0) + (scan.unreadableDirectories || 0)} unreadable locations` : "";
-        storageScanStatus.textContent = `${state} · ${counts}${inaccessible} · ${scan.root || "home folder"}`;
+        const inaccessible = scan.unreadableEntries || scan.unreadableDirectories || scan.unreadableVolumes
+          ? ` · ${(scan.unreadableEntries || 0) + (scan.unreadableDirectories || 0) + (scan.unreadableVolumes || 0)} unreadable locations` : "";
+        storageScanStatus.textContent = `${state} · ${counts}${inaccessible}`;
         renderLargestItems(largestFolders, scan.topFolders);
         renderLargestItems(largestFiles, scan.topFiles);
       } catch {
@@ -486,7 +491,7 @@
     }
 
     storageScanButton.addEventListener("click", async () => {
-      const accepted = window.confirm("JARVIS will scan your home folder, including hidden items, and read folder names, file names, and size metadata only. It will not open file contents, save results, or upload them. macOS-protected folders may be inaccessible, and a large folder can take time. Start the scan?");
+      const accepted = window.confirm("JARVIS will scan all accessible mounted volumes, including hidden items and any mounted removable or network storage. It reads file and folder names and size metadata only; it does not open file contents, save results, or upload them. Protected locations may be inaccessible. The scan can take a long time; unmount anything you do not want included. Start?");
       if (!accepted) return;
       storageScanButton.disabled = true;
       storageScanStatus.textContent = "Starting local scan…";
@@ -497,6 +502,15 @@
       } catch {
         storageScanStatus.textContent = "Could not start the local storage scan.";
         storageScanButton.disabled = false;
+      }
+    });
+    storageStopButton.addEventListener("click", async () => {
+      storageStopButton.disabled = true;
+      storageScanStatus.textContent = "Stopping scan…";
+      try {
+        await fetch("/api/storage-scan/stop", { method: "POST", cache: "no-store" });
+      } catch {
+        storageScanStatus.textContent = "Could not stop the scan. You can stop the local bridge with Control+C.";
       }
     });
     window.setInterval(refreshStorageScan, 1500);
@@ -547,7 +561,7 @@
         : `${metricLabel(reading)}: ${reading.status === "unsupported" ? "unsupported" : "unavailable"}${reading.detail ? ` — ${reading.detail}` : ""}.`;
 
       if (text.includes("space") || text.includes("disk") || text.includes("folder") || text.includes("large file")) {
-        if (!latestStorageScan || latestStorageScan.status === "idle") return "I haven’t scanned your home folder yet. Use “Scan home folder” to check names and size metadata locally; I won’t open file contents.";
+        if (!latestStorageScan || latestStorageScan.status === "idle") return "I haven’t scanned mounted storage yet. Use “Scan mounted storage” to check names and size metadata locally; I won’t open file contents."
         if (latestStorageScan.status === "scanning") return `The local scan is still running: ${latestStorageScan.scannedEntries || 0} entries checked so far.`;
         if (!["complete", "partial"].includes(latestStorageScan.status)) return latestStorageScan.detail || "The storage scan did not complete.";
         const largest = latestStorageScan.topFolders?.slice(0, 3) || [];
