@@ -73,7 +73,7 @@ No model API is required for telemetry. No API keys, passwords, or persistent ac
 
 1. **Local telemetry chapter (implemented):** keep the existing HTML demo; add the loopback-only bridge and display every metric the Apple Silicon provider reports: CPU/GPU utilization, temperature and power; GPU frequency; RAM/swap use and power; Neural Engine power; individual fan RPM; device/core metadata; and every network interface, with the default interface highlighted. Keep unavailable readings explicit. This Mac reported CPU/GPU, memory and default-interface readings; it reported no fan RPM, voltage measurement or Neural Engine power. The provider does not expose thermal pressure.
 2. **Reliability and portability:** verify provider behavior across supported macOS versions and models, and add Windows/Linux adapters only when their data source and permission behavior are documented.
-3. **Internet speed test:** add only as a user-started action with a named provider and clear data-transfer notice; do not run at startup or in the background.
+3. **Internet speed test (implemented):** the user starts a short Cloudflare test and confirms a notice describing up to 6 MiB of test payload, possible connection overhead, and Cloudflare's collection of completed measurements for aggregate insights. A local endpoint uses fixed URLs, caps transfer, applies a timeout and cooldown, and does not save results. Do not run at startup or in the background.
 4. **External voltage devices:** support only a specified, documented meter and validate input/output readings against a safe reference.
 
 Every chapter keeps unavailable, stale, permission-denied, and error states visible and preserves the previous working demo.
