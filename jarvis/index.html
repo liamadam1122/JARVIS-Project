@@ -175,7 +175,7 @@
         <div class="welcome" id="welcome">
           <div class="orb"><div class="orb-core"></div></div>
           <h1>At your service.</h1>
-          <p>Start with a question. We’ll build the rest one safe step at a time.</p>
+          <p>Ask about your computer. JARVIS will answer from local readings or say when information is unavailable.</p>
         </div>
         <div class="chat" id="chat" aria-live="polite"></div>
         <div class="suggestions" id="suggestions">
@@ -233,7 +233,7 @@
             <textarea id="input" rows="2" aria-label="Message JARVIS" placeholder="Message JARVIS…"></textarea>
             <div class="composer-footer"><span class="hint">Return to send · Shift + Return for a new line</span><button class="send" id="send" type="submit">Transmit</button></div>
           </form>
-          <div class="note">This is a local interface prototype. Replies are demo responses; no AI service is connected yet.</div>
+          <div class="note">Local answers use system readings and scans; broad conversational AI is not connected yet.</div>
         </div>
       </section>
     </main>
@@ -260,6 +260,9 @@
     const largestFolders = document.getElementById("largestFolders");
     const largestFiles = document.getElementById("largestFiles");
     let telemetryCards = [];
+    let latestTelemetry = null;
+    let latestStorageScan = null;
+    let latestSpeedTest = null;
     const readingFreshnessMs = 12000;
 
     function isUsableReading(reading) {
@@ -400,6 +403,7 @@
         const response = await fetch("/api/storage-scan", { cache: "no-store" });
         if (!response.ok) throw new Error("Storage scan status unavailable.");
         const scan = await response.json();
+        latestStorageScan = scan;
         if (scan.status === "scanning") {
           storageScanStatus.textContent = `Scanning home folder · ${scan.scannedEntries || 0} entries · ${scan.scannedFiles || 0} files`;
           storageScanButton.disabled = true;
@@ -421,6 +425,7 @@
     }
 
     function renderTelemetry(payload) {
+      latestTelemetry = payload;
       const readings = Array.isArray(payload.readings)
         ? payload.readings.filter(reading => reading && typeof reading.metric === "string") : [];
       const networkReadings = readings.filter(reading => reading.metric.startsWith("network."));
@@ -505,10 +510,12 @@
       try {
         const response = await fetch("/api/speed-test", { method: "POST", cache: "no-store" });
         const result = await response.json();
+        latestSpeedTest = result;
         if (!response.ok || result.status !== "available") throw new Error(result.detail || "Speed test unavailable.");
         const date = new Date(result.sampledAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
         speedTestResult.textContent = `Download ${result.downloadMbps.toFixed(1)} Mbps · Upload ${result.uploadMbps.toFixed(1)} Mbps · Cloudflare · ${date}`;
       } catch (error) {
+        latestSpeedTest = { status: "error" };
         speedTestResult.textContent = error.message || "Speed test failed. Try again later.";
       } finally {
         speedTestButton.disabled = false;
@@ -532,16 +539,56 @@
 
     function demoReply(message) {
       const text = message.toLowerCase();
-      if (text.includes("plan") || text.includes("app")) {
-        return "Let’s keep the first version small. Pick one useful job, describe what the screen should show, and build a working prototype before adding accounts, voice, or integrations. What do you want your first version to help you do?";
+      const readings = Array.isArray(latestTelemetry?.readings) ? latestTelemetry.readings : [];
+      const fresh = reading => isUsableReading(reading) && Date.now() - Date.parse(reading.sampledAt) <= readingFreshnessMs;
+      const sampleTime = reading => new Date(reading.sampledAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      const describe = reading => fresh(reading)
+        ? `${metricLabel(reading)}: ${formatReading(reading.value, reading.unit)} (sampled ${sampleTime(reading)}; ${reading.source}).`
+        : `${metricLabel(reading)}: ${reading.status === "unsupported" ? "unsupported" : "unavailable"}${reading.detail ? ` — ${reading.detail}` : ""}.`;
+
+      if (text.includes("space") || text.includes("disk") || text.includes("folder") || text.includes("large file")) {
+        if (!latestStorageScan || latestStorageScan.status === "idle") return "I haven’t scanned your home folder yet. Use “Scan home folder” to check names and size metadata locally; I won’t open file contents.";
+        if (latestStorageScan.status === "scanning") return `The local scan is still running: ${latestStorageScan.scannedEntries || 0} entries checked so far.`;
+        if (!["complete", "partial"].includes(latestStorageScan.status)) return latestStorageScan.detail || "The storage scan did not complete.";
+        const largest = latestStorageScan.topFolders?.slice(0, 3) || [];
+        const list = largest.length ? largest.map(item => `${item.path} (${formatBytes(item.bytes)})`).join("; ") : "No readable folders were found.";
+        const suffix = latestStorageScan.status === "partial" ? ` The scan was partial: ${(latestStorageScan.unreadableEntries || 0) + (latestStorageScan.unreadableDirectories || 0)} locations were inaccessible.` : "";
+        return `Largest folders by summed file size: ${list}. These are approximate logical sizes; nested folders overlap and APFS sharing, hard links, or sparse files can change actual disk use.${suffix}`;
       }
-      if (text.includes("learn") || text.includes("coding") || text.includes("code")) {
-        return "A good next step is to learn what each file does, then change one small thing and see the result. I can explain the code in plain language and help you decide what to try next.";
+      if (text.includes("speed test") || text.includes("internet speed") || text.includes("how fast")) {
+        if (latestSpeedTest?.status === "available") return `Most recent confirmed Cloudflare speed estimate: download ${latestSpeedTest.downloadMbps.toFixed(1)} Mbps and upload ${latestSpeedTest.uploadMbps.toFixed(1)} Mbps, sampled ${sampleTime(latestSpeedTest)}. This is a short test, not live interface traffic.`;
+        return "No speed test has been run in this session. Use “Run speed test” if you want to send the disclosed test payload to Cloudflare.";
       }
-      if (text.includes("task") || text.includes("today")) {
-        return "Let’s choose three things: one must-do, one quick win, and one thing you can leave for later. Tell me what’s on your list and I’ll help sort it.";
+      if (text.includes("pin") || text.includes("voltage")) {
+        return "JARVIS cannot safely infer physical pin voltage from software. A compatible meter and documented pin map are required; no voltage reading is currently available.";
       }
-      return "I’ve got your message. This prototype isn’t connected to an AI yet, so I can’t generate a real answer here. The next build step is connecting a model through a secure server route.";
+      if (text.includes("fan")) {
+        const fans = readings.filter(reading => reading.metric === "fan.rpm" || reading.metric.startsWith("fan.rpm."));
+        return fans.length ? fans.map(describe).join(" ") : "The current sensor provider did not report a fan tachometer reading. JARVIS does not change fan speed.";
+      }
+      if (text.includes("gpu")) {
+        const gpu = readings.filter(reading => reading.metric.startsWith("gpu.") || reading.metric === "temperature.gpu");
+        return gpu.length ? gpu.map(describe).join(" ") : "GPU readings are not exposed by the current sensor provider.";
+      }
+      if (text.includes("temperature") || text.includes("hot") || text.includes("thermal")) {
+        const temps = readings.filter(reading => reading.metric.startsWith("temperature.") || reading.metric === "thermal.pressure");
+        return temps.length ? temps.map(describe).join(" ") : "Temperature and thermal-pressure readings are not exposed by the current provider.";
+      }
+      if (text.includes("network") || text.includes("traffic")) {
+        const iface = latestTelemetry?.capabilities?.defaultNetworkInterface;
+        const network = readings.filter(reading => reading.metric.startsWith("network.") && (!iface || reading.label?.startsWith(`${iface} `)));
+        return network.length ? network.map(describe).join(" ") : "Live network-interface traffic is unavailable. It is separate from the optional internet speed test.";
+      }
+      if (text.includes("process") || text.includes("app using") || text.includes("using the most")) {
+        return "Per-process CPU, memory, and network attribution is not integrated yet, so I won’t guess which app is responsible.";
+      }
+      if (text.includes("health") || text.includes("status") || text.includes("what is my mac doing")) {
+        const available = readings.filter(fresh);
+        const unavailable = readings.filter(reading => !fresh(reading));
+        const summary = available.slice(0, 6).map(reading => `${metricLabel(reading)} ${formatReading(reading.value, reading.unit)}`).join("; ");
+        return `I can summarize reported measurements, but there is no validated overall health score yet. Fresh readings: ${summary || "none"}; ${unavailable.length} readings are unavailable, unsupported, or stale.`;
+      }
+      return "I can answer about reported GPU, temperature, fan, network, voltage, and scanned storage readings. Broader computer diagnosis and general chat are not connected yet.";
     }
 
     function submitMessage(text) {
