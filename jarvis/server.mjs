@@ -1,6 +1,8 @@
 import { createServer } from "node:http";
 import { randomBytes } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { lstat, readFile, readdir } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join, relative } from "node:path";
 import si from "systeminformation";
 
 const HOST = "127.0.0.1";
@@ -13,6 +15,7 @@ const SPEED_DOWNLOAD_BYTES = 5 * 1024 * 1024;
 const SPEED_UPLOAD_BYTES = 1 * 1024 * 1024;
 const SPEED_TEST_TIMEOUT_MS = 15_000;
 const SPEED_TEST_COOLDOWN_MS = 60_000;
+const STORAGE_TOP_LIMIT = 20;
 const html = await readFile(new URL("./index.html", import.meta.url));
 
 let sampler = null;
@@ -24,6 +27,8 @@ let cachedAt = 0;
 let sampleInFlight = null;
 let speedTestInFlight = null;
 let speedTestAllowedAt = 0;
+let storageScanPromise = null;
+let storageScan = { status: "idle" };
 
 if (process.platform === "darwin" && process.arch === "arm64") {
   try {
@@ -127,6 +132,100 @@ function addUnavailableAppleReadings(readings, reason, status) {
   for (const [metric, unit] of metrics) readings.push(unavailable(metric, unit, reason, status));
 }
 
+function addLargest(list, item) {
+  if (list.length < STORAGE_TOP_LIMIT || item.bytes > list[0].bytes) {
+    list.push(item);
+    list.sort((a, b) => a.bytes - b.bytes);
+    if (list.length > STORAGE_TOP_LIMIT) list.shift();
+  }
+}
+
+async function scanHomeDirectory() {
+  const root = homedir();
+  const result = {
+    status: "scanning",
+    root,
+    startedAt: new Date().toISOString(),
+    scannedEntries: 0,
+    scannedFiles: 0,
+    scannedDirectories: 0,
+    unreadableEntries: 0,
+    unreadableDirectories: 0,
+    skippedSymlinks: 0,
+    topFiles: [],
+    topFolders: [],
+  };
+  storageScan = result;
+  const rootFrame = { path: root, relativePath: ".", bytes: 0, parent: null, entries: null, index: 0 };
+  const stack = [rootFrame];
+
+  try {
+    while (stack.length) {
+      const frame = stack[stack.length - 1];
+      if (frame.entries === null) {
+        try {
+          frame.entries = await readdir(frame.path, { withFileTypes: true });
+        } catch {
+          result.unreadableDirectories += 1;
+          frame.entries = [];
+        }
+      }
+      if (frame.index >= frame.entries.length) {
+        stack.pop();
+        if (frame.parent) {
+          frame.parent.bytes += frame.bytes;
+          addLargest(result.topFolders, { path: frame.relativePath, bytes: frame.bytes });
+        }
+        continue;
+      }
+
+      const entry = frame.entries[frame.index++];
+      const fullPath = join(frame.path, entry.name);
+      result.scannedEntries += 1;
+      let info;
+      try {
+        info = await lstat(fullPath);
+      } catch {
+        result.unreadableEntries += 1;
+        continue;
+      }
+
+      if (info.isSymbolicLink()) {
+        result.skippedSymlinks += 1;
+      } else if (info.isDirectory()) {
+        result.scannedDirectories += 1;
+        stack.push({
+          path: fullPath,
+          relativePath: relative(root, fullPath) || ".",
+          bytes: 0,
+          parent: frame,
+          entries: null,
+          index: 0,
+        });
+      } else if (info.isFile()) {
+        result.scannedFiles += 1;
+        frame.bytes += info.size;
+        addLargest(result.topFiles, { path: relative(root, fullPath), bytes: info.size });
+      }
+
+      if (result.scannedEntries % 500 === 0) {
+        result.updatedAt = new Date().toISOString();
+        await new Promise(resolve => setImmediate(resolve));
+      }
+    }
+
+    result.status = result.unreadableEntries || result.unreadableDirectories ? "partial" : "complete";
+    result.totalBytes = rootFrame.bytes;
+    result.completedAt = new Date().toISOString();
+    result.detail = "File contents were not opened. Symlinks were skipped. Folder totals include nested contents.";
+  } catch {
+    result.status = "error";
+    result.completedAt = new Date().toISOString();
+    result.detail = "The storage scan stopped unexpectedly; no file contents were opened.";
+  }
+  storageScan = result;
+}
+
 async function collectTelemetry() {
   const now = Date.now();
   if (cachedPayload && now - cachedAt < POLL_CACHE_MS) return cachedPayload;
@@ -137,6 +236,8 @@ async function collectTelemetry() {
     let native = null;
     let networkRows = [];
     let networkMetadata = [];
+    let volumeRows = [];
+    let volumeError = false;
     let macError = null;
     let networkError = null;
     const jobs = [];
@@ -146,6 +247,7 @@ async function collectTelemetry() {
     }
     jobs.push(si.networkStats("*").then(value => { networkRows = Array.isArray(value) ? value : []; }).catch(error => { networkError = error; }));
     jobs.push(si.networkInterfaces(false).then(value => { networkMetadata = Array.isArray(value) ? value : []; }).catch(() => {}));
+    jobs.push(si.fsSize().then(value => { volumeRows = Array.isArray(value) ? value : []; }).catch(() => { volumeError = true; }));
     await Promise.all(jobs);
 
     const readings = [
@@ -204,6 +306,15 @@ async function collectTelemetry() {
       state: availableCount ? "partial" : "unavailable",
       provider: sensorProvider ?? "network counters only",
       device,
+      storageVolumes: volumeError ? null : volumeRows.map(volume => ({
+        mount: volume.mount,
+        filesystem: volume.fs,
+        type: volume.type,
+        sizeBytes: Number.isFinite(volume.size) ? volume.size : null,
+        usedBytes: Number.isFinite(volume.used) ? volume.used : null,
+        availableBytes: Number.isFinite(volume.available) ? volume.available : null,
+        usePercent: Number.isFinite(volume.use) ? volume.use : null,
+      })),
       capabilities: {
         defaultNetworkInterface: networkMetadata.find(network => network.default)?.iface ?? null,
         networkInterfaces: networkMetadata.map(network => ({
@@ -331,6 +442,18 @@ async function runSpeedTest() {
 const server = createServer(async (req, res) => {
   if (req.headers.host !== `${HOST}:${PORT}`) return send(res, 403, "text/plain; charset=utf-8", "Local host only.");
   if (req.headers.origin && req.headers.origin !== ORIGIN) return send(res, 403, "text/plain; charset=utf-8", "Same-origin requests only.");
+  if (req.url === "/api/storage-scan") {
+    if (req.method === "GET") {
+      return send(res, 200, "application/json; charset=utf-8", JSON.stringify(storageScan));
+    }
+    if (req.method !== "POST") return send(res, 405, "text/plain; charset=utf-8", "GET or POST required.");
+    if (req.headers.origin !== ORIGIN || Number(req.headers["content-length"] || 0) !== 0 || req.headers["transfer-encoding"]) {
+      return send(res, 403, "text/plain; charset=utf-8", "Same-origin requests without a body only.");
+    }
+    if (storageScanPromise) return send(res, 409, "application/json; charset=utf-8", JSON.stringify({ status: "scanning", detail: "A storage scan is already running." }));
+    storageScanPromise = scanHomeDirectory().finally(() => { storageScanPromise = null; });
+    return send(res, 202, "application/json; charset=utf-8", JSON.stringify({ status: "scanning" }));
+  }
   if (req.url === "/api/speed-test") {
     if (req.method !== "POST") return send(res, 405, "text/plain; charset=utf-8", "POST required.");
     if (req.headers.origin !== ORIGIN || Number(req.headers["content-length"] || 0) !== 0 || req.headers["transfer-encoding"]) {
