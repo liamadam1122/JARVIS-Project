@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import si from "systeminformation";
 
@@ -7,6 +8,11 @@ const PORT = 4173;
 const ORIGIN = `http://${HOST}:${PORT}`;
 const STALE_AFTER_MS = 12_000;
 const POLL_CACHE_MS = 1_000;
+const SPEED_TEST_ORIGIN = "https://speed.cloudflare.com";
+const SPEED_DOWNLOAD_BYTES = 5 * 1024 * 1024;
+const SPEED_UPLOAD_BYTES = 1 * 1024 * 1024;
+const SPEED_TEST_TIMEOUT_MS = 15_000;
+const SPEED_TEST_COOLDOWN_MS = 60_000;
 const html = await readFile(new URL("./index.html", import.meta.url));
 
 let sampler = null;
@@ -16,6 +22,8 @@ let sensorUnavailableStatus = "unsupported";
 let cachedPayload = null;
 let cachedAt = 0;
 let sampleInFlight = null;
+let speedTestInFlight = null;
+let speedTestAllowedAt = 0;
 
 if (process.platform === "darwin" && process.arch === "arm64") {
   try {
@@ -232,9 +240,113 @@ function send(res, status, type, body) {
   res.end(body);
 }
 
+async function readLimited(response, expectedBytes) {
+  if (!response.ok || new URL(response.url).origin !== SPEED_TEST_ORIGIN || !response.body) {
+    throw new Error("The speed-test provider returned an invalid response.");
+  }
+  const reader = response.body.getReader();
+  let received = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.byteLength;
+      if (received > expectedBytes) throw new Error("The provider exceeded the configured transfer limit.");
+    }
+  } catch (error) {
+    await reader.cancel().catch(() => {});
+    throw error;
+  } finally {
+    reader.releaseLock();
+  }
+  if (received !== expectedBytes) throw new Error("The provider returned an incomplete measurement.");
+  return received;
+}
+
+async function consumeBounded(response, maximumBytes) {
+  if (!response.ok || new URL(response.url).origin !== SPEED_TEST_ORIGIN || !response.body) {
+    throw new Error("The speed-test provider returned an invalid upload response.");
+  }
+  const reader = response.body.getReader();
+  let received = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.byteLength;
+      if (received > maximumBytes) throw new Error("The provider returned an oversized response.");
+    }
+  } catch (error) {
+    await reader.cancel().catch(() => {});
+    throw error;
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+async function runSpeedTest() {
+  const startedAt = new Date().toISOString();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SPEED_TEST_TIMEOUT_MS);
+  try {
+    const downloadStarted = performance.now();
+    const downloadResponse = await fetch(`${SPEED_TEST_ORIGIN}/__down?bytes=${SPEED_DOWNLOAD_BYTES}`, {
+      method: "GET", redirect: "error", signal: controller.signal,
+    });
+    const downloaded = await readLimited(downloadResponse, SPEED_DOWNLOAD_BYTES);
+    const downloadSeconds = Math.max((performance.now() - downloadStarted) / 1000, 0.001);
+
+    const uploadStarted = performance.now();
+    const uploadResponse = await fetch(`${SPEED_TEST_ORIGIN}/__up?bytes=${SPEED_UPLOAD_BYTES}`, {
+      method: "POST", redirect: "error", signal: controller.signal,
+      headers: { "Content-Type": "application/octet-stream" },
+      body: randomBytes(SPEED_UPLOAD_BYTES),
+    });
+    if (!uploadResponse.ok || new URL(uploadResponse.url).origin !== SPEED_TEST_ORIGIN) {
+      throw new Error("The speed-test provider rejected the upload measurement.");
+    }
+    await consumeBounded(uploadResponse, 64 * 1024);
+    const uploadSeconds = Math.max((performance.now() - uploadStarted) / 1000, 0.001);
+    return {
+      status: "available",
+      source: "Cloudflare speed.cloudflare.com",
+      sampledAt: startedAt,
+      downloadMbps: downloaded * 8 / downloadSeconds / 1_000_000,
+      uploadMbps: SPEED_UPLOAD_BYTES * 8 / uploadSeconds / 1_000_000,
+      transferredBytes: SPEED_DOWNLOAD_BYTES + SPEED_UPLOAD_BYTES,
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      source: "Cloudflare speed.cloudflare.com",
+      sampledAt: startedAt,
+      detail: error.name === "AbortError" ? "Speed test timed out after 15 seconds." : "Speed test failed; no result was recorded.",
+    };
+  } finally {
+    controller.abort();
+    clearTimeout(timeout);
+  }
+}
+
 const server = createServer(async (req, res) => {
   if (req.headers.host !== `${HOST}:${PORT}`) return send(res, 403, "text/plain; charset=utf-8", "Local host only.");
   if (req.headers.origin && req.headers.origin !== ORIGIN) return send(res, 403, "text/plain; charset=utf-8", "Same-origin requests only.");
+  if (req.url === "/api/speed-test") {
+    if (req.method !== "POST") return send(res, 405, "text/plain; charset=utf-8", "POST required.");
+    if (req.headers.origin !== ORIGIN || Number(req.headers["content-length"] || 0) !== 0 || req.headers["transfer-encoding"]) {
+      return send(res, 403, "text/plain; charset=utf-8", "Same-origin requests without a body only.");
+    }
+    if (speedTestInFlight) return send(res, 429, "application/json; charset=utf-8", JSON.stringify({ detail: "A speed test is already running." }));
+    if (Date.now() < speedTestAllowedAt) return send(res, 429, "application/json; charset=utf-8", JSON.stringify({ detail: "Please wait before running another speed test." }));
+    speedTestAllowedAt = Date.now() + SPEED_TEST_COOLDOWN_MS;
+    speedTestInFlight = runSpeedTest();
+    try {
+      const result = await speedTestInFlight;
+      return send(res, result.status === "available" ? 200 : 502, "application/json; charset=utf-8", JSON.stringify(result));
+    } finally {
+      speedTestInFlight = null;
+    }
+  }
   if (req.method !== "GET") return send(res, 405, "text/plain; charset=utf-8", "Read-only GET endpoint.");
 
   if (req.url === "/" || req.url === "/index.html") {
@@ -261,7 +373,7 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`JARVIS local telemetry: ${ORIGIN}`);
-  console.log("Read-only sensor access. Voltage and speed-test readings stay unavailable until supported hardware or an explicit speed test is added.");
+  console.log("Read-only sensor access. An internet speed test runs only after an explicit request.");
 });
 
 function stop() {
