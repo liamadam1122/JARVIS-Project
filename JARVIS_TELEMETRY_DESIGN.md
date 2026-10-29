@@ -64,17 +64,17 @@ Discovery is explicit and read-only. Enumerate supported providers and their dec
 
 ## Local security boundary
 
-A browser-only HTML file cannot directly read host sensors. A later desktop/local-host chapter must provide a small local bridge or native host, bound only to loopback and accessible only from the JARVIS UI origin. The bridge exposes read-only readings, not shell execution or arbitrary device access. It should request only the permissions needed for the chosen providers and make sensor access visible and stoppable.
+A browser-only HTML file cannot directly read host sensors. The current chapter adds a small local Node bridge bound only to loopback. It serves the JARVIS page and a single read-only telemetry endpoint, rejects unexpected Host and Origin headers, and exposes neither shell execution nor arbitrary device access. The Apple Silicon reader is optional; network counters remain independent if sensor support is missing. Stop the bridge with Control+C to end sensor access.
 
 No model API is required for telemetry. No API keys, passwords, or persistent access tokens belong in the repository.
 
 ## Delivery sequence
 
-1. **Dashboard foundation (this chapter):** show separate telemetry states without fabricated readings. Keep the existing single-file demo and make no hardware calls.
-2. **Local read-only bridge:** add the narrow localhost/native boundary and the shared reading contract; begin with capabilities the Mac can report reliably.
-3. **Mac providers:** add thermal state and supported raw sensor readings, labeling exact source and model limitations.
-4. **Network measurements:** show live interface throughput first; add user-started speed tests only with a clear data-transfer notice.
-5. **External voltage devices:** support only a specified, documented meter and test known input/output quantities against a safe reference.
-6. **Other operating systems:** implement and validate separate adapters without claiming feature parity where hardware does not provide it.
+1. **Local telemetry chapter (implemented):** keep the existing HTML demo; add the loopback-only bridge, best-effort Apple Silicon temperature/fan/thermal readings, and live network-interface throughput. Keep unavailable readings explicit. This Mac reported CPU/GPU temperatures and traffic; it reported no fan RPM, voltage measurement, or numeric thermal state in the verified sample.
+2. **Reliability and portability:** verify provider behavior across supported macOS versions and models, and add Windows/Linux adapters only when their data source and permission behavior are documented.
+3. **Internet speed test:** add only as a user-started action with a named provider and clear data-transfer notice; do not run at startup or in the background.
+4. **External voltage devices:** support only a specified, documented meter and validate input/output readings against a safe reference.
+
+Every chapter keeps unavailable, stale, permission-denied, and error states visible and preserves the previous working demo.
 
 Every chapter keeps unavailable, stale, permission-denied, and error states visible and preserves the previous working demo.
