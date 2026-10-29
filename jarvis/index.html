@@ -99,6 +99,7 @@
     .metric-value[data-state="available"] { color: var(--green); }
     .metric-value[data-state="stale"] { color: #ffd27a; }
     .metric-detail { display: block; margin-top: 3px; color: #71839a; font-size: 10px; }
+    .metric-time { display: block; margin-top: 3px; color: #71839a; font-size: 10px; }
     .chat { display:grid; gap:18px; padding:0 0 22px; }
     .message { display:flex; gap:12px; align-items:flex-start; animation: rise .25s ease-out; }
     @keyframes rise { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
@@ -175,26 +176,31 @@
               <span class="metric-name">Voltage input</span>
               <span class="metric-value" data-value>Unavailable</span>
               <span class="metric-detail" data-detail>Needs a supported input voltage meter</span>
+              <time class="metric-time" data-time>No sample time</time>
             </div>
             <div class="metric-card" id="voltageOutputCard">
               <span class="metric-name">Voltage output</span>
               <span class="metric-value" data-value>Unavailable</span>
               <span class="metric-detail" data-detail>Needs a supported output voltage meter</span>
+              <time class="metric-time" data-time>No sample time</time>
             </div>
             <div class="metric-card" id="temperatureCard">
               <span class="metric-name">Temperature</span>
               <span class="metric-value" data-value>Unavailable</span>
               <span class="metric-detail" data-detail>Waiting for a supported local sensor reader</span>
+              <time class="metric-time" data-time>No sample time</time>
             </div>
             <div class="metric-card" id="fanCard">
               <span class="metric-name">Fan speed</span>
               <span class="metric-value" data-value>Unavailable</span>
               <span class="metric-detail" data-detail>Read-only RPM readings when hardware reports them</span>
+              <time class="metric-time" data-time>No sample time</time>
             </div>
             <div class="metric-card" id="networkCard">
               <span class="metric-name">Live network traffic</span>
               <span class="metric-value" data-value>Not measured</span>
               <span class="metric-detail" data-detail>Current transfer rate, not an internet speed test</span>
+              <time class="metric-time" data-time>No sample time</time>
             </div>
           </div>
         </section>
@@ -223,17 +229,25 @@
       fan: document.getElementById("fanCard"),
       network: document.getElementById("networkCard"),
     };
-    const lastTelemetry = new Map();
     const readingFreshnessMs = 12000;
 
     function setTelemetryCard(card, value, status, detail, sampledAt = null) {
       const valueNode = card.querySelector("[data-value]");
       const detailNode = card.querySelector("[data-detail]");
+      const timeNode = card.querySelector("[data-time]");
       valueNode.textContent = value;
       valueNode.dataset.state = status;
       valueNode.dataset.lastValue = value;
       detailNode.textContent = detail;
       card.dataset.sampledAt = sampledAt || "";
+      const parsedTime = sampledAt ? new Date(sampledAt) : null;
+      if (parsedTime && Number.isFinite(parsedTime.getTime())) {
+        timeNode.dateTime = parsedTime.toISOString();
+        timeNode.textContent = `Sampled ${parsedTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+      } else {
+        timeNode.removeAttribute("datetime");
+        timeNode.textContent = "No sample time";
+      }
       card.dataset.lastDetail = detail;
       card.dataset.status = status;
     }
@@ -290,8 +304,9 @@
         const source = availableFans[0][1].source || "local sensor";
         setTelemetryCard(telemetryCards.fan, value, "available", `Read-only source: ${source}`, sampledAt);
       } else {
-        const detail = fanReadings.find(([, reading]) => reading.detail)?.[1].detail || "No fan sensor was reported.";
-        setTelemetryCard(telemetryCards.fan, "Unavailable", "unavailable", detail);
+        const fanReading = fanReadings.find(([, reading]) => reading.detail)?.[1];
+        const detail = fanReading?.detail || "No fan sensor was reported.";
+        setTelemetryCard(telemetryCards.fan, "Unavailable", "unavailable", detail, fanReading?.sampledAt);
       }
 
       if (download?.status === "available" || upload?.status === "available") {
