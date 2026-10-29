@@ -112,6 +112,12 @@
     .speed-test-button { border: 1px solid rgba(89,220,244,.38); border-radius: 9px; padding: 8px 11px; background: rgba(89,220,244,.07); cursor: pointer; }
     .speed-test-button:disabled { cursor: wait; opacity: .65; }
     .speed-test-result { color: #9aabc0; font-size: 11px; }
+    .storage-lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 14px; }
+    .storage-list { margin: 7px 0 0; padding-left: 18px; color: #9aabc0; font-size: 10px; }
+    .storage-list li { margin: 0 0 7px; overflow-wrap: anywhere; }
+    .storage-list strong { color: #d7e2ef; font-weight: 600; }
+    .storage-status { margin-top: 8px; color: #9aabc0; font-size: 11px; }
+    .storage-note { margin: 7px 0; color: #71839a; font-size: 10px; }
     .chat { display:grid; gap:18px; padding:0 0 22px; }
     .message { display:flex; gap:12px; align-items:flex-start; animation: rise .25s ease-out; }
     @keyframes rise { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
@@ -203,6 +209,25 @@
           </div>
           <div class="metric-detail" style="margin-top:12px">Board-pin voltage needs a compatible meter and a documented pin map. JARVIS will not probe unknown pins.</div>
         </section>
+        <section class="telemetry" aria-label="Storage inventory">
+          <div class="telemetry-head">
+            <span class="telemetry-title">STORAGE MAP</span>
+            <span class="telemetry-state" id="storageVolumeStatus">Reading mounted volumes…</span>
+          </div>
+          <div class="metric-grid" id="storageVolumeGrid" aria-live="polite"></div>
+          <div class="speed-test" style="margin-top:15px">
+            <div class="telemetry-title">LARGEST FOLDERS AND FILES</div>
+            <p class="speed-test-copy">Scan your home folder, including hidden items, to find large folders and files. JARVIS reads names and size metadata only; it does not open file contents, save the results, or send them anywhere. Protected locations may be skipped by macOS.</p>
+            <div class="speed-test-row">
+              <button class="speed-test-button" id="storageScanButton" type="button">Scan home folder</button>
+              <span class="storage-status" id="storageScanStatus" role="status">Not scanned</span>
+            </div>
+            <div class="storage-lists">
+              <div><div class="metric-name">Largest folders · nested totals overlap</div><ol class="storage-list" id="largestFolders"></ol></div>
+              <div><div class="metric-name">Largest files</div><ol class="storage-list" id="largestFiles"></ol></div>
+            </div>
+          </div>
+        </section>
         <div class="composer-wrap">
           <form class="composer" id="form">
             <textarea id="input" rows="2" aria-label="Message JARVIS" placeholder="Message JARVIS…"></textarea>
@@ -228,6 +253,12 @@
     const networkDetails = document.getElementById("networkDetails");
     const speedTestButton = document.getElementById("speedTestButton");
     const speedTestResult = document.getElementById("speedTestResult");
+    const storageVolumeGrid = document.getElementById("storageVolumeGrid");
+    const storageVolumeStatus = document.getElementById("storageVolumeStatus");
+    const storageScanButton = document.getElementById("storageScanButton");
+    const storageScanStatus = document.getElementById("storageScanStatus");
+    const largestFolders = document.getElementById("largestFolders");
+    const largestFiles = document.getElementById("largestFiles");
     let telemetryCards = [];
     const readingFreshnessMs = 12000;
 
@@ -318,6 +349,77 @@
       return card;
     }
 
+    function formatBytes(bytes) {
+      if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes < 0) return "Unavailable";
+      const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+      let value = bytes;
+      let unitIndex = 0;
+      while (value >= 1024 && unitIndex < units.length - 1) { value /= 1024; unitIndex += 1; }
+      return `${value.toFixed(unitIndex ? 1 : 0)} ${units[unitIndex]}`;
+    }
+
+    function renderStorageVolumes(volumes) {
+      if (!Array.isArray(volumes)) {
+        storageVolumeStatus.textContent = "Volume inventory unavailable";
+        storageVolumeGrid.replaceChildren();
+        return;
+      }
+      const cards = volumes.map(volume => {
+        const card = document.createElement("div");
+        card.className = "metric-card";
+        const name = document.createElement("span");
+        name.className = "metric-name";
+        name.textContent = `${volume.mount || "Mounted volume"} · ${volume.filesystem || volume.type || "filesystem unavailable"}`;
+        const value = document.createElement("span");
+        value.className = "metric-value";
+        value.textContent = `${formatBytes(volume.usedBytes)} used / ${formatBytes(volume.sizeBytes)}`;
+        const detail = document.createElement("span");
+        detail.className = "metric-detail";
+        const percent = typeof volume.usePercent === "number" && Number.isFinite(volume.usePercent) ? ` · ${volume.usePercent.toFixed(1)}% used` : "";
+        detail.textContent = `${formatBytes(volume.availableBytes)} available${percent}`;
+        card.append(name, value, detail);
+        return card;
+      });
+      storageVolumeGrid.replaceChildren(...cards);
+      storageVolumeStatus.textContent = `${volumes.length} mounted volume entries · capacity figures can overlap on APFS`;
+    }
+
+    function renderLargestItems(container, items) {
+      const rows = Array.isArray(items) ? items.map(item => {
+        const row = document.createElement("li");
+        const label = document.createElement("strong");
+        label.textContent = formatBytes(item.bytes);
+        row.append(label, document.createTextNode(` · ${item.path}`));
+        return row;
+      }) : [];
+      container.replaceChildren(...rows);
+    }
+
+    async function refreshStorageScan() {
+      try {
+        const response = await fetch("/api/storage-scan", { cache: "no-store" });
+        if (!response.ok) throw new Error("Storage scan status unavailable.");
+        const scan = await response.json();
+        if (scan.status === "scanning") {
+          storageScanStatus.textContent = `Scanning home folder · ${scan.scannedEntries || 0} entries · ${scan.scannedFiles || 0} files`;
+          storageScanButton.disabled = true;
+          return;
+        }
+        storageScanButton.disabled = false;
+        if (scan.status === "idle") return;
+        const state = scan.status === "complete" ? "Complete" : scan.status === "partial" ? "Partial scan" : "Scan error";
+        const counts = `${scan.scannedFiles || 0} files · ${scan.scannedDirectories || 0} folders`;
+        const inaccessible = scan.unreadableEntries || scan.unreadableDirectories
+          ? ` · ${(scan.unreadableEntries || 0) + (scan.unreadableDirectories || 0)} unreadable locations` : "";
+        storageScanStatus.textContent = `${state} · ${counts}${inaccessible} · ${scan.root || "home folder"}`;
+        renderLargestItems(largestFolders, scan.topFolders);
+        renderLargestItems(largestFiles, scan.topFiles);
+      } catch {
+        storageScanStatus.textContent = "Local storage scan service unavailable";
+        storageScanButton.disabled = false;
+      }
+    }
+
     function renderTelemetry(payload) {
       const readings = Array.isArray(payload.readings)
         ? payload.readings.filter(reading => reading && typeof reading.metric === "string") : [];
@@ -348,6 +450,7 @@
         device.gpuCores ? `${device.gpuCores} GPU cores` : null, cpuCores]
         .filter(value => typeof value === "string" && value.trim() || typeof value === "number") : [];
       telemetryDevice.textContent = deviceParts.length ? `Discovered device: ${deviceParts.join(" · ")}` : "Device details unavailable from the current provider.";
+      renderStorageVolumes(payload.storageVolumes);
       const availableCount = readings.filter(isUsableReading).length;
       telemetryStatus.textContent = `${availableCount} of ${readings.length} readings available · ${payload.provider || "local provider"}`;
     }
@@ -376,6 +479,23 @@
         markStaleTelemetry();
       }
     }
+
+    storageScanButton.addEventListener("click", async () => {
+      const accepted = window.confirm("JARVIS will scan your home folder, including hidden items, and read folder names, file names, and size metadata only. It will not open file contents, save results, or upload them. macOS-protected folders may be inaccessible, and a large folder can take time. Start the scan?");
+      if (!accepted) return;
+      storageScanButton.disabled = true;
+      storageScanStatus.textContent = "Starting local scan…";
+      try {
+        const response = await fetch("/api/storage-scan", { method: "POST", cache: "no-store" });
+        if (!response.ok && response.status !== 409) throw new Error("Could not start the storage scan.");
+        await refreshStorageScan();
+      } catch {
+        storageScanStatus.textContent = "Could not start the local storage scan.";
+        storageScanButton.disabled = false;
+      }
+    });
+    window.setInterval(refreshStorageScan, 1500);
+    refreshStorageScan();
 
     speedTestButton.addEventListener("click", async () => {
       const accepted = window.confirm("Run a short internet speed test? It sends up to 6 MiB of test payload through Cloudflare (5 MiB download and 1 MiB upload); connection overhead can add a little. Cloudflare collects completed results for aggregated connection insights. Do not run this on a metered connection.");
