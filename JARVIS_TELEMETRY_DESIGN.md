@@ -2,7 +2,7 @@
 
 ## Purpose
 
-JARVIS should show trustworthy, read-only device telemetry. It must distinguish a measured value from an estimate, an unsupported sensor, a failed read, and a reading that has gone stale. It must never invent a value to make the dashboard look complete.
+JARVIS should build a trustworthy local picture of the computer from hardware, storage, process, and network evidence. It must distinguish measurements from estimates, unsupported sensors, failed reads, partial scans, and stale readings. It must never invent values or claim a complete health assessment from incomplete evidence.
 
 ## Shared reading contract
 
@@ -46,6 +46,14 @@ Rules:
 - Raw temperature and fan RPM are best-effort, model-specific readings. A platform adapter must identify its source and report unsupported where it cannot read reliably.
 - JARVIS is read-only for this feature. It must not set fan speed or change thermal policies.
 
+### Storage and files
+
+- Mounted-volume capacity and user-home folder scans are separate measurements. APFS volumes can share a container, so reported capacity entries may overlap.
+- A folder scan reads directory entries and file metadata only. It does not open file contents, persist the inventory, or send it to a remote service.
+- The current scanner is user-started and limited to the home directory. It includes hidden entries, skips symbolic links, and reports inaccessible paths as a partial result instead of bypassing macOS protections.
+- File-size sums are approximate logical bytes. Nested folder totals overlap, and hard links, sparse files, compression, and APFS clones can make the sum differ from actual disk blocks used.
+- Do not delete files, clear caches, or change permissions as part of a scan.
+
 ### Network
 
 - Separate live interface throughput (derived from byte-counter deltas over a known interval) from an internet speed test.
@@ -65,15 +73,17 @@ Discovery is explicit and read-only. Enumerate supported providers and their dec
 
 ## Local security boundary
 
-A browser-only HTML file cannot directly read host sensors. The current chapter adds a small local Node bridge bound only to loopback. It serves the JARVIS page and a single read-only telemetry endpoint, rejects unexpected Host and Origin headers, and exposes neither shell execution nor arbitrary device access. The Apple Silicon reader is optional; network counters remain independent if sensor support is missing. Stop the bridge with Control+C to end sensor access.
+A browser-only HTML file cannot directly read host sensors. The current chapter adds a small local Node bridge bound only to loopback. It serves the JARVIS page and read-only telemetry plus explicit same-origin actions for a fixed speed test and a home-folder metadata scan. It rejects unexpected Host and Origin headers, exposes no arbitrary path input or shell execution, and does not read file contents. The Apple Silicon reader is optional; network counters remain independent if sensor support is missing. Stop the bridge with Control+C to end sensor access.
 
 No model API is required for telemetry. No API keys, passwords, or persistent access tokens belong in the repository.
 
 ## Delivery sequence
 
-1. **Local telemetry chapter (implemented):** keep the existing HTML demo; add the loopback-only bridge and display every metric the Apple Silicon provider reports: CPU/GPU utilization, temperature and power; GPU frequency; RAM/swap use and power; Neural Engine power; individual fan RPM; device/core metadata; and every network interface, with the default interface highlighted. Keep unavailable readings explicit. This Mac reported CPU/GPU, memory and default-interface readings; it reported no fan RPM, voltage measurement or Neural Engine power. The provider does not expose thermal pressure.
-2. **Reliability and portability:** verify provider behavior across supported macOS versions and models, and add Windows/Linux adapters only when their data source and permission behavior are documented.
+1. **Local system inventory chapter (in progress):** keep the existing HTML demo; add the loopback-only bridge and display every metric the Apple Silicon provider reports: CPU/GPU utilization, temperature and power; GPU frequency; RAM/swap use and power; Neural Engine power; individual fan RPM; device/core metadata; and every network interface, with the default interface highlighted. Keep unavailable readings explicit. This Mac reported CPU/GPU, memory and default-interface readings; it reported no fan RPM, voltage measurement or Neural Engine power. The provider does not expose thermal pressure.
+2. **Storage inventory (implemented, limited):** show capacity for mounted volumes and let the user scan the home folder for large files and folders. Read names and metadata only, skip links, expose inaccessible-path counts, and label logical-size caveats.
 3. **Internet speed test (implemented):** the user starts a short Cloudflare test and confirms a notice describing up to 6 MiB of test payload, possible connection overhead, and Cloudflare's collection of completed measurements for aggregate insights. A local endpoint uses fixed URLs, caps transfer, applies a timeout and cooldown, and does not save results. Do not run at startup or in the background.
-4. **External voltage devices:** support only a specified, documented meter and validate input/output readings against a safe reference.
+4. **Cross-layer diagnosis:** add documented per-process attribution and time comparisons, then state likely causes only when multiple fresh readings support them.
+5. **Reliability and portability:** verify provider behavior across supported macOS versions and models, and add Windows/Linux adapters only when their data source and permission behavior are documented.
+6. **External voltage devices:** support only a specified, documented meter and validate input/output readings against a safe reference.
 
 Every chapter keeps unavailable, stale, permission-denied, and error states visible and preserves the previous working demo.
