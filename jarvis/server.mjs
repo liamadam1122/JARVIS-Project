@@ -317,7 +317,7 @@ async function collectTelemetry() {
     let networkMetadata = [];
     let volumeRows = [];
     let volumeError = false;
-    let systemInfo = { load: null, memory: null, temperature: null, cpu: null, graphics: null };
+    let systemInfo = { load: null, memory: null, temperature: null, cpu: null, graphics: null, system: null };
     let macError = null;
     let networkError = null;
     const jobs = [];
@@ -333,6 +333,7 @@ async function collectTelemetry() {
     jobs.push(si.cpuTemperature().then(value => { systemInfo.temperature = value; }).catch(() => {}));
     jobs.push(si.cpu().then(value => { systemInfo.cpu = value; }).catch(() => {}));
     jobs.push(si.graphics().then(value => { systemInfo.graphics = value; }).catch(() => {}));
+    jobs.push(si.system().then(value => { systemInfo.system = value; }).catch(() => {}));
     await Promise.all(jobs);
 
     const readings = [
@@ -410,15 +411,26 @@ async function collectTelemetry() {
     }
 
     const availableCount = readings.filter(reading => reading.status === "available").length;
-    const controllerModels = Array.isArray(systemInfo.graphics?.controllers)
-      ? systemInfo.graphics.controllers.map(controller => [controller.vendor, controller.model].filter(Boolean).join(" ")).filter(Boolean)
-      : [];
+    const controllers = Array.isArray(systemInfo.graphics?.controllers) ? systemInfo.graphics.controllers : [];
+    const controllerModels = controllers.map(controller => {
+      const vendor = String(controller.vendor || "").trim();
+      const model = String(controller.model || "").trim();
+      if (!model) return vendor || null;
+      return vendor && !model.toLowerCase().startsWith(vendor.toLowerCase()) ? `${vendor} ${model}` : model;
+    }).filter(Boolean);
+    const appleChip = process.platform === "darwin"
+      ? controllers.find(controller => /^Apple$/i.test(String(controller.vendor || "")) && /^Apple\s+(?:M\d+|A\d+\s+Pro)\b/i.test(String(controller.model || "")))
+      : null;
+    const gpuCoreCount = Number.parseInt(controllers[0]?.cores, 10);
     const device = {
       ...(sampler?.soc ?? native?.soc ?? {}),
+      macModel: process.platform === "darwin" ? systemInfo.system?.version || systemInfo.system?.model || null : null,
+      chipName: sampler?.soc?.chipName || appleChip?.model?.replace(/^Apple\s+/i, "Apple ") || null,
       cpuBrand: systemInfo.cpu?.brand || null,
       cpuCores: Number.isFinite(systemInfo.cpu?.physicalCores) ? systemInfo.cpu.physicalCores : systemInfo.cpu?.cores ?? null,
       memoryGb: Number.isFinite(systemInfo.memory?.total) ? systemInfo.memory.total / (1024 ** 3) : sampler?.soc?.memoryGb ?? null,
       gpuModels: controllerModels,
+      gpuCores: Number.isFinite(gpuCoreCount) && gpuCoreCount > 0 ? gpuCoreCount : null,
     };
 
     const payload = {
