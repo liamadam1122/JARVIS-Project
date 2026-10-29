@@ -28,6 +28,7 @@ let sampleInFlight = null;
 let speedTestInFlight = null;
 let speedTestAllowedAt = 0;
 let storageScanPromise = null;
+let storageScanStopRequested = false;
 let storageScan = { status: "idle" };
 
 if (process.platform === "darwin" && process.arch === "arm64") {
@@ -165,7 +166,7 @@ async function scanMountedStorage() {
     if (!Array.isArray(volumes)) volumes = [];
     let mounts = volumes
       .filter(volume => typeof volume.mount === "string" && isAbsolute(volume.mount))
-      .filter(volume => !/(^|\\/)(proc|sys|dev|run)(\\/|$)/.test(volume.mount));
+      .filter(volume => !["/proc", "/sys", "/dev", "/run"].some(path => volume.mount === path || volume.mount.startsWith(path + sep)));
     if (!mounts.length) mounts = [{ mount: homedir(), type: "home-folder fallback" }];
 
     const roots = [];
@@ -201,11 +202,13 @@ async function scanMountedStorage() {
       }
     }
 
-    for (const root of uniqueRoots) {
+    scanRoots: for (const root of uniqueRoots) {
+      if (storageScanStopRequested) { result.status = "cancelled"; break; }
       result.scannedVolumes.push(root.mount);
       const rootFrame = { path: root.path, displayPath: root.mount, bytes: 0, parent: null, entries: null, index: 0 };
       const stack = [rootFrame];
-      while (stack.length) {
+      scanEntries: while (stack.length) {
+        if (storageScanStopRequested) { result.status = "cancelled"; break scanRoots; }
         const frame = stack[stack.length - 1];
         if (frame.entries === null) {
           try {
@@ -252,6 +255,7 @@ async function scanMountedStorage() {
         if (result.scannedEntries % 500 === 0) {
           result.updatedAt = new Date().toISOString();
           await new Promise(resolve => setImmediate(resolve));
+          if (storageScanStopRequested) { result.status = "cancelled"; break scanRoots; }
         }
       }
       result.totalBytes = (result.totalBytes || 0) + rootFrame.bytes;
@@ -259,9 +263,9 @@ async function scanMountedStorage() {
 
     result.topFiles.reverse();
     result.topFolders.reverse();
-    result.status = result.unreadableEntries || result.unreadableDirectories || result.unreadableVolumes ? "partial" : "complete";
+    if (result.status !== "cancelled") result.status = result.unreadableEntries || result.unreadableDirectories || result.unreadableVolumes ? "partial" : "complete";
     result.completedAt = new Date().toISOString();
-    result.detail = "File contents were not opened. Symlinks and nested mount boundaries were skipped; each mounted volume is scanned at most once where detectable.";
+    result.detail = result.status === "cancelled" ? "The scan was stopped by the user; file contents were not opened." : "File contents were not opened. Symlinks and nested mount boundaries were skipped; each mounted volume is scanned at most once where detectable.";
   } catch {
     result.status = "error";
     result.completedAt = new Date().toISOString();
@@ -486,6 +490,14 @@ async function runSpeedTest() {
 const server = createServer(async (req, res) => {
   if (req.headers.host !== `${HOST}:${PORT}`) return send(res, 403, "text/plain; charset=utf-8", "Local host only.");
   if (req.headers.origin && req.headers.origin !== ORIGIN) return send(res, 403, "text/plain; charset=utf-8", "Same-origin requests only.");
+  if (req.url === "/api/storage-scan/stop") {
+    if (req.method !== "POST" || req.headers.origin !== ORIGIN || Number(req.headers["content-length"] || 0) !== 0 || req.headers["transfer-encoding"]) {
+      return send(res, 403, "text/plain; charset=utf-8", "Same-origin POST without a body required.");
+    }
+    if (!storageScanPromise) return send(res, 409, "application/json; charset=utf-8", JSON.stringify({ status: storageScan.status }));
+    storageScanStopRequested = true;
+    return send(res, 202, "application/json; charset=utf-8", JSON.stringify({ status: "stopping" }));
+  }
   if (req.url === "/api/storage-scan") {
     if (req.method === "GET") {
       return send(res, 200, "application/json; charset=utf-8", JSON.stringify(storageScan));
@@ -495,6 +507,7 @@ const server = createServer(async (req, res) => {
       return send(res, 403, "text/plain; charset=utf-8", "Same-origin requests without a body only.");
     }
     if (storageScanPromise) return send(res, 409, "application/json; charset=utf-8", JSON.stringify({ status: "scanning", detail: "A storage scan is already running." }));
+    storageScanStopRequested = false;
     storageScanPromise = scanMountedStorage().finally(() => { storageScanPromise = null; });
     return send(res, 202, "application/json; charset=utf-8", JSON.stringify({ status: "scanning" }));
   }
