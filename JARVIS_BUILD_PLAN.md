@@ -29,3 +29,18 @@ Build a futuristic personal AI assistant, starting as a small web app and adding
 
 ## First milestone
 Run a basic app locally on the Mac before adding AI, voice, or account integrations.
+
+## Current chapter — local telemetry foundation
+- Keep `jarvis/index.html` as the existing demo; its replies are still hardcoded and no model is connected.
+- `jarvis/server.mjs` is an optional read-only bridge bound to `127.0.0.1`. It serves the page and telemetry endpoint only.
+- On supported Apple Silicon Macs, the bridge may report CPU/GPU temperatures, fan RPM, and macOS thermal state. These are best-effort readings from undocumented Apple sensor interfaces; unsupported readings remain unavailable.
+- Network readings are live interface traffic, not an internet speed test. A speed test must be explicitly started in a later step.
+- Voltage input/output remains unavailable until a compatible, documented meter is supported.
+- No API key is needed for telemetry. Keep secrets out of Git; never add fan controls or arbitrary shell/device access.
+
+## Next chapters
+1. Validate the local bridge on supported macOS versions and improve reading timestamps and failure explanations.
+2. Add a user-started internet speed test with a clear data-transfer notice.
+3. Add a documented external voltage meter adapter, if a compatible meter is available.
+4. Add separate Windows/Linux providers only where their sensor sources and permission requirements are clear.
+5. Decide separately whether to keep the local HTML app or migrate to Next.js; do not connect a model API until a secure server-side route and key handling are planned.
