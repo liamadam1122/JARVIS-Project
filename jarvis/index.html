@@ -81,6 +81,43 @@
       text-align:left; cursor:pointer; border:1px solid var(--line); border-radius:12px;
       background:rgba(255,255,255,.025); padding:13px 15px; color:#c7d7e9; font-size:13px; transition:.2s;
     }
+    .telemetry {
+      width: min(650px, 100%); margin: 26px auto 0; padding: 16px;
+      border: 1px solid var(--line); border-radius: 14px;
+      background: rgba(255,255,255,.025);
+    }
+    .telemetry-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      margin-bottom: 12px;
+    }
+    .telemetry-title { color: #c7d7e9; font-size: 12px; font-weight: 700; letter-spacing: .08em; }
+    .telemetry-state { color: #9aabc0; font-size: 10px; }
+    .telemetry-device { margin: 0 0 10px; color: #9aabc0; font-size: 11px; }
+    .network-details { margin-top: 12px; color: #9aabc0; font-size: 11px; }
+    .network-details summary { cursor: pointer; padding: 8px 0; }
+    .network-details[open] .metric-grid { margin-top: 8px; }
+    .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 9px; }
+    .metric-card { border: 1px solid var(--line); border-radius: 10px; padding: 11px; min-width: 0; }
+    .metric-name { display: block; color: var(--muted); font-size: 11px; }
+    .metric-value { display: block; margin-top: 5px; color: #d7e2ef; font-size: 13px; font-weight: 650; }
+    .metric-value[data-state="available"] { color: var(--green); }
+    .metric-value[data-state="stale"] { color: #ffd27a; }
+    .metric-value[data-state="error"] { color: #ff9b9b; }
+    .metric-value[data-state="unsupported"] { color: #9aabc0; }
+    .metric-detail { display: block; margin-top: 3px; color: #71839a; font-size: 10px; }
+    .metric-time { display: block; margin-top: 3px; color: #71839a; font-size: 10px; }
+    .speed-test { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+    .speed-test-copy { margin: 6px 0 10px; color: #9aabc0; font-size: 11px; }
+    .speed-test-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+    .speed-test-button { border: 1px solid rgba(89,220,244,.38); border-radius: 9px; padding: 8px 11px; background: rgba(89,220,244,.07); cursor: pointer; }
+    .speed-test-button:disabled { cursor: wait; opacity: .65; }
+    .speed-test-result { color: #9aabc0; font-size: 11px; }
+    .storage-lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 14px; }
+    .storage-list { margin: 7px 0 0; padding-left: 18px; color: #9aabc0; font-size: 10px; }
+    .storage-list li { margin: 0 0 7px; overflow-wrap: anywhere; }
+    .storage-list strong { color: #d7e2ef; font-weight: 600; }
+    .storage-status { margin-top: 8px; color: #9aabc0; font-size: 11px; }
+    .storage-note { margin: 7px 0; color: #71839a; font-size: 10px; }
     .chat { display:grid; gap:18px; padding:0 0 22px; }
     .message { display:flex; gap:12px; align-items:flex-start; animation: rise .25s ease-out; }
     @keyframes rise { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
@@ -138,21 +175,67 @@
         <div class="welcome" id="welcome">
           <div class="orb"><div class="orb-core"></div></div>
           <h1>At your service.</h1>
-          <p>Start with a question. We’ll build the rest one safe step at a time.</p>
+          <p>Ask about your computer. JARVIS will answer from local readings or say when information is unavailable.</p>
         </div>
         <div class="chat" id="chat" aria-live="polite"></div>
         <div class="suggestions" id="suggestions">
-          <button class="suggestion">Help me plan my first app</button>
-          <button class="suggestion">Explain a coding idea simply</button>
-          <button class="suggestion">Help me organize today's tasks</button>
-          <button class="suggestion">What should I learn next?</button>
+          <button class="suggestion">How can I optimize this Mac?</button>
+          <button class="suggestion">What is my GPU doing?</button>
+          <button class="suggestion">Can you read my fan speed?</button>
+          <button class="suggestion">What is using my disk space?</button>
+          <button class="suggestion">How fast is my internet?</button>
         </div>
+        <section class="telemetry" aria-label="System telemetry">
+          <div class="telemetry-head">
+            <span class="telemetry-title">SYSTEM TELEMETRY</span>
+            <span class="telemetry-state" id="telemetryStatus" role="status">Local telemetry bridge not connected</span>
+          </div>
+          <div class="telemetry-device" id="telemetryDevice">Waiting for the local sensor inventory.</div>
+          <div class="metric-grid" id="metricGrid" aria-live="polite">
+            <div class="metric-card"><span class="metric-name">Sensor inventory</span><span class="metric-value">Connecting…</span><span class="metric-detail">Only readings reported by supported local providers appear here.</span></div>
+          </div>
+          <div class="telemetry-title" style="margin:16px 0 8px">DEFAULT NETWORK INTERFACE</div>
+          <div class="metric-grid" id="primaryNetworkGrid"></div>
+          <details class="network-details" id="networkDetails">
+            <summary>All detected network interfaces</summary>
+            <div class="metric-grid" id="networkGrid"></div>
+          </details>
+          <div class="speed-test">
+            <div class="telemetry-title">INTERNET SPEED TEST</div>
+            <p class="speed-test-copy">A manual test sends up to 6 MiB of test payload (5 MiB download, 1 MiB upload) through Cloudflare; connection overhead can add a little. Cloudflare collects completed results for aggregated connection insights. Avoid this on metered data.</p>
+            <div class="speed-test-row">
+              <button class="speed-test-button" id="speedTestButton" type="button">Run speed test</button>
+              <span class="speed-test-result" id="speedTestResult" role="status">Not run</span>
+            </div>
+          </div>
+          <div class="metric-detail" style="margin-top:12px">Board-pin voltage needs a compatible meter and a documented pin map. JARVIS will not probe unknown pins.</div>
+        </section>
+        <section class="telemetry" aria-label="Storage inventory">
+          <div class="telemetry-head">
+            <span class="telemetry-title">STORAGE MAP</span>
+            <span class="telemetry-state" id="storageVolumeStatus">Reading mounted volumes…</span>
+          </div>
+          <div class="metric-grid" id="storageVolumeGrid" aria-live="polite"></div>
+          <div class="speed-test" style="margin-top:15px">
+            <div class="telemetry-title">LARGEST FOLDERS AND FILES</div>
+            <p class="speed-test-copy">Scan every accessible mounted volume, including hidden items and removable or network storage, to find large folders and files. JARVIS reads names and size metadata only; it does not open file contents, save the results, or send them anywhere. Protected locations may be skipped by macOS. Network and removable volumes are included if mounted; unmount any you do not want scanned. File sizes are approximate logical totals; nested folders overlap and APFS or hard-link behavior can differ from physical disk use.</p>
+            <div class="speed-test-row">
+              <button class="speed-test-button" id="storageScanButton" type="button">Scan mounted storage</button>
+              <button class="speed-test-button" id="storageStopButton" type="button" hidden>Stop scan</button>
+              <span class="storage-status" id="storageScanStatus" role="status">Not scanned</span>
+            </div>
+            <div class="storage-lists">
+              <div><div class="metric-name">Largest folders · nested totals overlap</div><ol class="storage-list" id="largestFolders"></ol></div>
+              <div><div class="metric-name">Largest files</div><ol class="storage-list" id="largestFiles"></ol></div>
+            </div>
+          </div>
+        </section>
         <div class="composer-wrap">
           <form class="composer" id="form">
             <textarea id="input" rows="2" aria-label="Message JARVIS" placeholder="Message JARVIS…"></textarea>
-            <div class="composer-footer"><span class="hint">Return to send · Shift + Return for a new line</span><button class="send" id="send" type="submit">Send&nbsp; ↗</button></div>
+            <div class="composer-footer"><span class="hint">Return to send · Shift + Return for a new line</span><button class="send" id="send" type="submit">Transmit</button></div>
           </form>
-          <div class="note">This is a local interface prototype. Replies are demo responses; no AI service is connected yet.</div>
+          <div class="note">Local answers use system readings and scans; broad conversational AI is not connected yet.</div>
         </div>
       </section>
     </main>
@@ -164,6 +247,299 @@
     const welcome = document.getElementById("welcome");
     const suggestions = document.getElementById("suggestions");
     const send = document.getElementById("send");
+    const telemetryStatus = document.getElementById("telemetryStatus");
+    const telemetryDevice = document.getElementById("telemetryDevice");
+    const metricGrid = document.getElementById("metricGrid");
+    const primaryNetworkGrid = document.getElementById("primaryNetworkGrid");
+    const networkGrid = document.getElementById("networkGrid");
+    const networkDetails = document.getElementById("networkDetails");
+    const speedTestButton = document.getElementById("speedTestButton");
+    const speedTestResult = document.getElementById("speedTestResult");
+    const storageVolumeGrid = document.getElementById("storageVolumeGrid");
+    const storageVolumeStatus = document.getElementById("storageVolumeStatus");
+    const storageScanButton = document.getElementById("storageScanButton");
+    const storageStopButton = document.getElementById("storageStopButton");
+    const storageScanStatus = document.getElementById("storageScanStatus");
+    const largestFolders = document.getElementById("largestFolders");
+    const largestFiles = document.getElementById("largestFiles");
+    let telemetryCards = [];
+    let latestTelemetry = null;
+    let latestStorageScan = null;
+    let latestSpeedTest = null;
+    const readingFreshnessMs = 12000;
+
+    function isUsableReading(reading) {
+      if (reading?.status !== "available" || typeof reading.value !== "number" || !Number.isFinite(reading.value)) return false;
+      if (typeof reading.source !== "string" || !reading.source.trim()) return false;
+      const sampledAt = Date.parse(reading.sampledAt || "");
+      return Number.isFinite(sampledAt) && sampledAt <= Date.now() + 60_000;
+    }
+
+    function metricLabel(reading) {
+      if (reading.label) return reading.label;
+      const labels = {
+        "voltage.input": "Voltage input",
+        "voltage.output": "Voltage output",
+        "temperature.cpu": "CPU temperature",
+        "temperature.gpu": "GPU temperature",
+        "cpu.usage": "CPU utilization",
+        "cpu.power": "CPU power",
+        "gpu.usage": "GPU utilization",
+        "gpu.frequency": "GPU frequency",
+        "gpu.power": "GPU power",
+        "memory.ram.used": "RAM used",
+        "memory.ram.total": "RAM total",
+        "memory.ram.usage": "RAM utilization",
+        "memory.ram.power": "RAM power",
+        "memory.swap.used": "Swap used",
+        "memory.swap.total": "Swap total",
+        "memory.swap.usage": "Swap utilization",
+        "accelerator.ane.power": "Neural Engine power",
+        "thermal.pressure": "Thermal pressure",
+        "fan.rpm": "Fan speed",
+      };
+      if (labels[reading.metric]) return labels[reading.metric];
+      const fan = reading.metric.match(/^fan\.rpm(?:_max)?\.(.+)$/);
+      if (fan) return `${fan[1]} fan ${reading.metric.includes("_max") ? "maximum speed" : "speed"}`;
+      return reading.metric.split(".").map(part => part.replaceAll("_", " ")).join(" · ");
+    }
+
+    function formatReading(value, unit) {
+      if (unit === "rpm" || unit === "MHz" || unit === "level") return `${Math.round(value)} ${unit}`;
+      if (unit === "%") return `${value.toFixed(1)}%`;
+      if (unit === "°C" || unit === "W" || unit === "GiB") return `${value.toFixed(1)} ${unit}`;
+      if (unit === "Mbps") return `${value >= 100 ? value.toFixed(0) : value >= 10 ? value.toFixed(1) : value.toFixed(2)} Mbps`;
+      return `${value} ${unit || ""}`.trim();
+    }
+
+    function createMetricCard(reading) {
+      const card = document.createElement("div");
+      card.className = "metric-card";
+      card.dataset.metric = reading.metric;
+      const name = document.createElement("span");
+      name.className = "metric-name";
+      name.textContent = metricLabel(reading);
+      const value = document.createElement("span");
+      value.className = "metric-value";
+      value.dataset.value = "true";
+      const usable = isUsableReading(reading);
+      const status = usable ? "available" : reading.status === "available" ? "error" : reading.status || "unavailable";
+      const showStaleValue = reading.status === "stale" && typeof reading.value === "number" && Number.isFinite(reading.value);
+      value.textContent = usable
+        ? formatReading(reading.value, reading.unit)
+        : showStaleValue ? `Stale · ${formatReading(reading.value, reading.unit)}`
+          : status === "unsupported" ? "Unsupported"
+            : status === "error" ? "Read error" : "Unavailable";
+      value.dataset.state = status;
+      value.dataset.lastValue = typeof reading.value === "number" && Number.isFinite(reading.value)
+        ? formatReading(reading.value, reading.unit) : "Unavailable";
+      const detail = document.createElement("span");
+      detail.className = "metric-detail";
+      detail.dataset.detail = "true";
+      detail.textContent = usable || reading.status !== "available"
+        ? reading.detail || `Source: ${reading.source || "unspecified"}`
+        : "The provider omitted a valid number, source, or sample time; this value is hidden.";
+      const time = document.createElement("time");
+      time.className = "metric-time";
+      const parsedTime = reading.sampledAt ? new Date(reading.sampledAt) : null;
+      if (parsedTime && Number.isFinite(parsedTime.getTime())) {
+        time.dateTime = parsedTime.toISOString();
+        time.textContent = `Sampled ${parsedTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+      } else {
+        time.textContent = "No sample time";
+      }
+      card.dataset.sampledAt = parsedTime && Number.isFinite(parsedTime.getTime()) ? parsedTime.toISOString() : "";
+      card.dataset.status = status;
+      card.dataset.lastDetail = detail.textContent;
+      card.append(name, value, detail, time);
+      return card;
+    }
+
+    function formatBytes(bytes) {
+      if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes < 0) return "Unavailable";
+      const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+      let value = bytes;
+      let unitIndex = 0;
+      while (value >= 1024 && unitIndex < units.length - 1) { value /= 1024; unitIndex += 1; }
+      return `${value.toFixed(unitIndex ? 1 : 0)} ${units[unitIndex]}`;
+    }
+
+    function renderStorageVolumes(volumes) {
+      if (!Array.isArray(volumes)) {
+        storageVolumeStatus.textContent = "Volume inventory unavailable";
+        storageVolumeGrid.replaceChildren();
+        return;
+      }
+      const cards = volumes.map(volume => {
+        const card = document.createElement("div");
+        card.className = "metric-card";
+        const name = document.createElement("span");
+        name.className = "metric-name";
+        name.textContent = `${volume.mount || "Mounted volume"} · ${volume.filesystem || volume.type || "filesystem unavailable"}`;
+        const value = document.createElement("span");
+        value.className = "metric-value";
+        value.textContent = `${formatBytes(volume.usedBytes)} used / ${formatBytes(volume.sizeBytes)}`;
+        const detail = document.createElement("span");
+        detail.className = "metric-detail";
+        const percent = typeof volume.usePercent === "number" && Number.isFinite(volume.usePercent) ? ` · ${volume.usePercent.toFixed(1)}% used` : "";
+        detail.textContent = `${formatBytes(volume.availableBytes)} available${percent}`;
+        card.append(name, value, detail);
+        return card;
+      });
+      storageVolumeGrid.replaceChildren(...cards);
+      storageVolumeStatus.textContent = `${volumes.length} mounted volume entries · capacity figures can overlap on APFS`;
+    }
+
+    function renderLargestItems(container, items) {
+      const rows = Array.isArray(items) ? items.map(item => {
+        const row = document.createElement("li");
+        const label = document.createElement("strong");
+        label.textContent = formatBytes(item.bytes);
+        row.append(label, document.createTextNode(` · ${item.path}`));
+        return row;
+      }) : [];
+      container.replaceChildren(...rows);
+    }
+
+    async function refreshStorageScan() {
+      try {
+        const response = await fetch("/api/storage-scan", { cache: "no-store" });
+        if (!response.ok) throw new Error("Storage scan status unavailable.");
+        const scan = await response.json();
+        latestStorageScan = scan;
+        if (scan.status === "scanning") {
+          storageScanStatus.textContent = `Scanning ${scan.scannedVolumes?.length || 0} mounted volumes · ${scan.scannedEntries || 0} entries · ${scan.scannedFiles || 0} files`;
+          storageScanButton.disabled = true;
+          storageStopButton.hidden = false;
+          storageStopButton.disabled = false;
+          return;
+        }
+        storageScanButton.disabled = false;
+        storageStopButton.hidden = true;
+        if (scan.status === "idle") return;
+        const state = scan.status === "complete" ? "Complete" : scan.status === "partial" ? "Partial scan" : scan.status === "cancelled" ? "Stopped" : "Scan error";
+        const counts = `${scan.scannedVolumes?.length || 0} volumes · ${scan.scannedFiles || 0} files · ${scan.scannedDirectories || 0} folders`;
+        const inaccessible = scan.unreadableEntries || scan.unreadableDirectories || scan.unreadableVolumes
+          ? ` · ${(scan.unreadableEntries || 0) + (scan.unreadableDirectories || 0) + (scan.unreadableVolumes || 0)} unreadable locations` : scan.usedHomeFallback ? " · volume discovery failed; home only" : "";
+        storageScanStatus.textContent = `${state} · ${counts}${inaccessible}`;
+        renderLargestItems(largestFolders, scan.topFolders);
+        renderLargestItems(largestFiles, scan.topFiles);
+      } catch {
+        storageScanStatus.textContent = "Local storage scan service unavailable";
+        storageScanButton.disabled = false;
+      }
+    }
+
+    function renderTelemetry(payload) {
+      latestTelemetry = payload;
+      const readings = Array.isArray(payload.readings)
+        ? payload.readings.filter(reading => reading && typeof reading.metric === "string") : [];
+      const networkReadings = readings.filter(reading => reading.metric.startsWith("network."));
+      const hardwareReadings = readings.filter(reading => !reading.metric.startsWith("network."));
+      const interfaces = Array.isArray(payload.capabilities?.networkInterfaces) ? payload.capabilities.networkInterfaces : [];
+      const defaultInterface = payload.capabilities?.defaultNetworkInterface;
+      const defaultCards = defaultInterface
+        ? networkReadings.filter(reading => reading.label?.startsWith(`${defaultInterface} `)).map(createMetricCard)
+        : [];
+      const networkCards = networkReadings.map(createMetricCard);
+      const hardwareCards = hardwareReadings.map(createMetricCard);
+      telemetryCards = [...hardwareCards, ...defaultCards, ...networkCards];
+      metricGrid.replaceChildren(...hardwareCards);
+      primaryNetworkGrid.replaceChildren(...defaultCards);
+      if (!defaultCards.length) {
+        const note = document.createElement("div");
+        note.className = "metric-detail";
+        note.textContent = "No default network interface was identified.";
+        primaryNetworkGrid.replaceChildren(note);
+      }
+      networkGrid.replaceChildren(...networkCards);
+      networkDetails.querySelector("summary").textContent = `All detected network interfaces (${interfaces.length}) · live traffic, not a speed test`;
+      const device = payload.device;
+      const cpuCores = device?.ecpuCores || device?.pcpuCores
+        ? `${device.ecpuCores || 0} efficiency + ${device.pcpuCores || 0} performance CPU cores` : null;
+      const deviceParts = device ? [device.macModel, device.chipName ? `${device.chipName} chip` : null,
+        Array.isArray(device.gpuModels) && device.gpuModels.length ? `${device.gpuModels.join(", ")} GPU` : null,
+        device.gpuCores ? `${device.gpuCores} GPU cores` : null,
+        device.memoryGb ? `${device.memoryGb} GiB unified memory` : null,
+        device.cpuBrand, device.cpuCores ? `${device.cpuCores} CPU cores` : cpuCores]
+        .filter(value => typeof value === "string" && value.trim() || typeof value === "number") : [];
+      telemetryDevice.textContent = deviceParts.length ? `Discovered hardware: ${deviceParts.join(" · ")}` : "Device details unavailable from the current provider.";
+      renderStorageVolumes(payload.storageVolumes);
+      const availableCount = readings.filter(isUsableReading).length;
+      telemetryStatus.textContent = `${availableCount} of ${readings.length} readings available · ${payload.provider || "local provider"}`;
+    }
+
+    function markStaleTelemetry() {
+      const now = Date.now();
+      telemetryCards.forEach(card => {
+        const sampledAt = Date.parse(card.dataset.sampledAt || "");
+        if (card.dataset.status !== "available" || !Number.isFinite(sampledAt)) return;
+        if (now - sampledAt <= readingFreshnessMs) return;
+        const valueNode = card.querySelector("[data-value]");
+        valueNode.textContent = `Stale · ${valueNode.dataset.lastValue}`;
+        valueNode.dataset.state = "stale";
+        card.querySelector("[data-detail]").textContent = card.dataset.lastDetail + " · Waiting for a fresh reading.";
+        card.dataset.status = "stale";
+      });
+    }
+
+    async function refreshTelemetry() {
+      try {
+        const response = await fetch("/api/telemetry", { cache: "no-store" });
+        if (!response.ok) throw new Error("Local telemetry request failed.");
+        renderTelemetry(await response.json());
+      } catch {
+        telemetryStatus.textContent = "Local telemetry bridge not running";
+        markStaleTelemetry();
+      }
+    }
+
+    storageScanButton.addEventListener("click", async () => {
+      const accepted = window.confirm("JARVIS will scan all accessible mounted volumes, including hidden items and any mounted removable or network storage. It reads file and folder names and size metadata only; it does not open file contents, save results, or upload them. Protected locations may be inaccessible. The scan can take a long time; unmount anything you do not want included. Start?");
+      if (!accepted) return;
+      storageScanButton.disabled = true;
+      storageScanStatus.textContent = "Starting local scan…";
+      try {
+        const response = await fetch("/api/storage-scan", { method: "POST", cache: "no-store" });
+        if (!response.ok && response.status !== 409) throw new Error("Could not start the storage scan.");
+        await refreshStorageScan();
+      } catch {
+        storageScanStatus.textContent = "Could not start the local storage scan.";
+        storageScanButton.disabled = false;
+      }
+    });
+    storageStopButton.addEventListener("click", async () => {
+      storageStopButton.disabled = true;
+      storageScanStatus.textContent = "Stopping scan…";
+      try {
+        const response = await fetch("/api/storage-scan/stop", { method: "POST", cache: "no-store" });
+        if (!response.ok && response.status !== 409) throw new Error("Stop request failed.");
+      } catch {
+        storageScanStatus.textContent = "Could not stop the scan. You can stop the local bridge with Control+C.";
+      }
+    });
+    window.setInterval(refreshStorageScan, 1500);
+    refreshStorageScan();
+
+    speedTestButton.addEventListener("click", async () => {
+      const accepted = window.confirm("Run a short internet speed test? It sends up to 6 MiB of test payload through Cloudflare (5 MiB download and 1 MiB upload); connection overhead can add a little. Cloudflare collects completed results for aggregated connection insights. Do not run this on a metered connection.");
+      if (!accepted) return;
+      speedTestButton.disabled = true;
+      speedTestResult.textContent = "Running a one-time test…";
+      try {
+        const response = await fetch("/api/speed-test", { method: "POST", cache: "no-store" });
+        const result = await response.json();
+        latestSpeedTest = result;
+        if (!response.ok || result.status !== "available") throw new Error(result.detail || "Speed test unavailable.");
+        const date = new Date(result.sampledAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        speedTestResult.textContent = `Download ${result.downloadMbps.toFixed(1)} Mbps · Upload ${result.uploadMbps.toFixed(1)} Mbps · Cloudflare · ${date}`;
+      } catch (error) {
+        latestSpeedTest = { status: "error" };
+        speedTestResult.textContent = error.message || "Speed test failed. Try again later.";
+      } finally {
+        speedTestButton.disabled = false;
+      }
+    });
 
     function addMessage(text, who) {
       const row = document.createElement("div");
@@ -182,16 +558,83 @@
 
     function demoReply(message) {
       const text = message.toLowerCase();
-      if (text.includes("plan") || text.includes("app")) {
-        return "Let’s keep the first version small. Pick one useful job, describe what the screen should show, and build a working prototype before adding accounts, voice, or integrations. What do you want your first version to help you do?";
+      const readings = Array.isArray(latestTelemetry?.readings) ? latestTelemetry.readings : [];
+      const device = latestTelemetry?.device || {};
+      const fresh = reading => isUsableReading(reading) && Date.now() - Date.parse(reading.sampledAt) <= readingFreshnessMs;
+      const sampleTime = reading => new Date(reading.sampledAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      const describe = reading => {
+        if (fresh(reading)) return `${metricLabel(reading)}: ${formatReading(reading.value, reading.unit)} (sampled ${sampleTime(reading)}; ${reading.source}).`;
+        const ageMs = Date.now() - Date.parse(reading.sampledAt || "");
+        const status = reading.status === "unsupported" ? "unsupported"
+          : reading.status === "error" ? "read error"
+            : reading.status === "stale" || reading.status === "available" && ageMs > readingFreshnessMs ? "stale"
+              : "unavailable";
+        return `${metricLabel(reading)}: ${status}${reading.detail ? ` — ${reading.detail}` : ""}.`;
+      };
+
+      if (/\b(optim\w*|faster|speed up|improv\w*|unlock\w*|overclock\w*|performance)\b/.test(text)) {
+        const hardware = device.macModel || device.chipName || null;
+        if (device.macModel || device.chipName) {
+          return `For this Mac${hardware ? ` (${hardware})` : ""}, JARVIS has not changed any settings. Apple silicon uses an integrated GPU and macOS manages its power automatically; there is no general GPU-unlock switch. For a game or creative app, try its own render resolution or graphics-quality controls, keep the laptop on a hard surface with vents clear, and compare the same scene before and after. The readings above show what this Mac exposes; temperature and fan readings may not be available. This is local rule-based guidance, not connected AI.`;
+        }
+        return "JARVIS has not changed any settings. Safe tuning depends on the exact laptop, GPU, cooling, and power adapter. Use the laptop maker’s or GPU maker’s supported tool, change one setting at a time, and compare the same workload. A universal ‘unlock’ or guaranteed 2× gain is not a safe assumption. This is local rule-based guidance, not connected AI.";
       }
-      if (text.includes("learn") || text.includes("coding") || text.includes("code")) {
-        return "A good next step is to learn what each file does, then change one small thing and see the result. I can explain the code in plain language and help you decide what to try next.";
+      const asksHardwareIdentity = /\bwhat (?:kind|model|type) of\b/.test(text)
+        || /\b(?:what|which) (?:mac|macbook|computer|chip|gpu)\b/.test(text) && !/\b(?:doing|usage|utilization|activity|working)\b/.test(text)
+        || /\bmy (?:mac|chip|gpu|computer)\b/.test(text) && /\b(?:model|kind|type|specs|hardware)\b/.test(text);
+      if (asksHardwareIdentity) {
+        const hardware = [device.macModel, device.chipName ? `${device.chipName} chip` : null,
+          device.gpuModels?.length ? `${device.gpuModels.join(", ")} GPU${device.gpuCores ? ` (${device.gpuCores} cores)` : ""}` : null,
+          device.memoryGb ? `${device.memoryGb} GiB unified memory` : null,
+          device.cpuCores ? `${device.cpuCores} CPU cores` : null].filter(Boolean).join(" · ");
+        return hardware ? `JARVIS identified: ${hardware}. Live readings are listed on the dashboard; any missing sensor is marked unavailable. This inventory is read locally and is not sent to an AI service.` : "The local provider has not identified this device yet. Check that the JARVIS bridge is running and refresh the dashboard.";
       }
-      if (text.includes("task") || text.includes("today")) {
-        return "Let’s choose three things: one must-do, one quick win, and one thing you can leave for later. Tell me what’s on your list and I’ll help sort it.";
+
+      if (text.includes("space") || text.includes("disk") || text.includes("folder") || text.includes("large file")) {
+        if (!latestStorageScan || latestStorageScan.status === "idle") return "I haven’t scanned mounted storage yet. Use “Scan mounted storage” to check names and size metadata locally; I won’t open file contents."
+        if (latestStorageScan.status === "scanning") return `The local scan is still running: ${latestStorageScan.scannedEntries || 0} entries checked so far.`;
+        if (!["complete", "partial"].includes(latestStorageScan.status)) return latestStorageScan.detail || "The storage scan did not complete.";
+        const largest = latestStorageScan.topFolders?.slice(0, 3) || [];
+        const list = largest.length ? largest.map(item => `${item.path} (${formatBytes(item.bytes)})`).join("; ") : "No readable folders were found.";
+        const suffix = latestStorageScan.status === "partial" ? ` The scan was partial: ${(latestStorageScan.unreadableEntries || 0) + (latestStorageScan.unreadableDirectories || 0)} locations were inaccessible.` : "";
+        return `Largest folders by summed file size: ${list}. These are approximate logical sizes; nested folders overlap and APFS sharing, hard links, or sparse files can change actual disk use.${suffix}`;
       }
-      return "I’ve got your message. This prototype isn’t connected to an AI yet, so I can’t generate a real answer here. The next build step is connecting a model through a secure server route.";
+      if (text.includes("speed test") || text.includes("internet speed") || text.includes("how fast")) {
+        if (latestSpeedTest?.status === "available") return `Most recent confirmed Cloudflare speed estimate: download ${latestSpeedTest.downloadMbps.toFixed(1)} Mbps and upload ${latestSpeedTest.uploadMbps.toFixed(1)} Mbps, sampled ${sampleTime(latestSpeedTest)}. This is a short test, not live interface traffic.`;
+        return "No speed test has been run in this session. Use “Run speed test” if you want to send the disclosed test payload to Cloudflare.";
+      }
+      if (text.includes("pin") || text.includes("voltage")) {
+        return "JARVIS cannot safely infer physical pin voltage from software. A compatible meter and documented pin map are required; no voltage reading is currently available.";
+      }
+      if (text.includes("fan")) {
+        const fans = readings.filter(reading => reading.metric === "fan.rpm" || reading.metric.startsWith("fan.rpm."));
+        return fans.length ? fans.map(describe).join(" ") : "The current sensor provider did not report a fan tachometer reading. JARVIS does not change fan speed.";
+      }
+      if (text.includes("gpu")) {
+        const gpu = readings.filter(reading => reading.metric.startsWith("gpu.") || reading.metric === "temperature.gpu");
+        const identity = [device.gpuModels?.join(", "), device.gpuCores ? `${device.gpuCores} reported GPU cores` : null]
+          .filter(Boolean).join(" · ");
+        return `${identity ? `Detected GPU: ${identity}. ` : "GPU model is not exposed by the current provider. "}${gpu.length ? gpu.map(describe).join(" ") : "Live GPU readings are not exposed by the current sensor provider."}`;
+      }
+      if (text.includes("temperature") || text.includes("hot") || text.includes("thermal")) {
+        const temps = readings.filter(reading => reading.metric.startsWith("temperature.") || reading.metric === "thermal.pressure");
+        return temps.length ? temps.map(describe).join(" ") : "Temperature and thermal-pressure readings are not exposed by the current provider.";
+      }
+      if (text.includes("network") || text.includes("traffic")) {
+        const iface = latestTelemetry?.capabilities?.defaultNetworkInterface;
+        const network = readings.filter(reading => reading.metric.startsWith("network.") && (!iface || reading.label?.startsWith(`${iface} `)));
+        return network.length ? network.map(describe).join(" ") : "Live network-interface traffic is unavailable. It is separate from the optional internet speed test.";
+      }
+      if (text.includes("process") || text.includes("app using") || text.includes("using the most")) {
+        return "Per-process CPU, memory, and network attribution is not integrated yet, so I won’t guess which app is responsible.";
+      }
+      if (text.includes("health") || text.includes("status") || text.includes("what is my mac doing")) {
+        const available = readings.filter(fresh);
+        const unavailable = readings.filter(reading => !fresh(reading));
+        const summary = available.slice(0, 6).map(reading => `${metricLabel(reading)} ${formatReading(reading.value, reading.unit)}`).join("; ");
+        return `I can summarize reported measurements, but there is no validated overall health score yet. Fresh readings: ${summary || "none"}; ${unavailable.length} readings are unavailable, unsupported, or stale.`;
+      }
+      return "I can answer about reported GPU, temperature, fan, network, voltage, and scanned storage readings. Broader computer diagnosis and general chat are not connected yet.";
     }
 
     function submitMessage(text) {
@@ -231,6 +674,9 @@
       input.value = "";
       input.focus();
     });
+    refreshTelemetry();
+    window.setInterval(refreshTelemetry, 4000);
+    window.setInterval(markStaleTelemetry, 1000);
   </script>
 </body>
 </html>

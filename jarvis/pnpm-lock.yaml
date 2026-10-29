@@ -1,0 +1,39 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      systeminformation:
+        specifier: 5.33.18
+        version: 5.33.18
+    optionalDependencies:
+      apple-silicon-metrics:
+        specifier: 0.1.2
+        version: 0.1.2
+
+packages:
+
+  apple-silicon-metrics@0.1.2:
+    resolution: {integrity: sha512-ztcMEnDBqeFXiGgJmPgnjxT5RAqh2oiwywawIQsnNR8T3qP4BjiLTc3sPJvfnZ1WVqfeA3mfARJDlR+fXOtEPw==}
+    engines: {node: '>=20'}
+    cpu: [arm64]
+    os: [darwin]
+    hasBin: true
+
+  systeminformation@5.33.18:
+    resolution: {integrity: sha512-SF8DBQx3ypa8zDqZlezpHQ6M2g7TrqSEWpAtC4OsHCdLmi7J2WdxaSbA8/DJyEn2l/CHPrW0VFenoqoDccrw6g==}
+    engines: {node: '>=10.0.0'}
+    os: [darwin, linux, win32, freebsd, openbsd, netbsd, sunos, android]
+    hasBin: true
+
+snapshots:
+
+  apple-silicon-metrics@0.1.2:
+    optional: true
+
+  systeminformation@5.33.18: {}
