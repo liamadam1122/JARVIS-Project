@@ -1,8 +1,8 @@
 import { createServer } from "node:http";
 import { randomBytes } from "node:crypto";
-import { lstat, readFile, readdir } from "node:fs/promises";
+import { lstat, readFile, readdir, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, relative } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 import si from "systeminformation";
 
 const HOST = "127.0.0.1";
@@ -140,86 +140,128 @@ function addLargest(list, item) {
   }
 }
 
-async function scanHomeDirectory() {
-  const root = homedir();
+async function scanMountedStorage() {
   const result = {
     status: "scanning",
-    root,
     startedAt: new Date().toISOString(),
     scannedEntries: 0,
     scannedFiles: 0,
     scannedDirectories: 0,
+    scannedVolumes: [],
     unreadableEntries: 0,
     unreadableDirectories: 0,
+    unreadableVolumes: 0,
     skippedSymlinks: 0,
+    skippedMountBoundaries: 0,
+    skippedDuplicateVolumes: 0,
+    skippedVirtualFilesystems: 0,
     topFiles: [],
     topFolders: [],
   };
   storageScan = result;
-  const rootFrame = { path: root, relativePath: ".", bytes: 0, parent: null, entries: null, index: 0 };
-  const stack = [rootFrame];
 
   try {
-    while (stack.length) {
-      const frame = stack[stack.length - 1];
-      if (frame.entries === null) {
-        try {
-          frame.entries = await readdir(frame.path, { withFileTypes: true });
-        } catch {
-          result.unreadableDirectories += 1;
-          frame.entries = [];
-        }
-      }
-      if (frame.index >= frame.entries.length) {
-        stack.pop();
-        if (frame.parent) {
-          frame.parent.bytes += frame.bytes;
-          addLargest(result.topFolders, { path: frame.relativePath, bytes: frame.bytes });
-        }
+    let volumes = await si.fsSize();
+    if (!Array.isArray(volumes)) volumes = [];
+    let mounts = volumes
+      .filter(volume => typeof volume.mount === "string" && isAbsolute(volume.mount))
+      .filter(volume => !/(^|\\/)(proc|sys|dev|run)(\\/|$)/.test(volume.mount));
+    if (!mounts.length) mounts = [{ mount: homedir(), type: "home-folder fallback" }];
+
+    const roots = [];
+    for (const volume of mounts) {
+      const filesystemType = String(volume.type || "").toLowerCase();
+      if (/^(proc|sysfs|devtmpfs|tmpfs|devfs|autofs|overlay|squashfs|cgroup2?|pstore|securityfs|tracefs|debugfs)$/.test(filesystemType)) {
+        result.skippedVirtualFilesystems += 1;
         continue;
       }
-
-      const entry = frame.entries[frame.index++];
-      const fullPath = join(frame.path, entry.name);
-      result.scannedEntries += 1;
-      let info;
       try {
-        info = await lstat(fullPath);
+        const canonicalPath = await realpath(volume.mount);
+        const info = await lstat(canonicalPath);
+        if (!info.isDirectory()) {
+          result.unreadableVolumes += 1;
+          continue;
+        }
+        roots.push({ mount: volume.mount, path: canonicalPath, device: info.dev });
       } catch {
-        result.unreadableEntries += 1;
-        continue;
+        result.unreadableVolumes += 1;
       }
+    }
 
-      if (info.isSymbolicLink()) {
-        result.skippedSymlinks += 1;
-      } else if (info.isDirectory()) {
-        result.scannedDirectories += 1;
-        stack.push({
-          path: fullPath,
-          relativePath: relative(root, fullPath) || ".",
-          bytes: 0,
-          parent: frame,
-          entries: null,
-          index: 0,
-        });
-      } else if (info.isFile()) {
-        result.scannedFiles += 1;
-        frame.bytes += info.size;
-        addLargest(result.topFiles, { path: relative(root, fullPath), bytes: info.size });
+    roots.sort((a, b) => a.path.length - b.path.length);
+    const uniqueRoots = [];
+    for (const root of roots) {
+      const alreadyCovered = uniqueRoots.some(parent =>
+        parent.device === root.device && (root.path === parent.path || root.path.startsWith(parent.path.endsWith(sep) ? parent.path : parent.path + sep))
+      );
+      if (alreadyCovered) {
+        result.skippedDuplicateVolumes += 1;
+      } else {
+        uniqueRoots.push(root);
       }
+    }
 
-      if (result.scannedEntries % 500 === 0) {
-        result.updatedAt = new Date().toISOString();
-        await new Promise(resolve => setImmediate(resolve));
+    for (const root of uniqueRoots) {
+      result.scannedVolumes.push(root.mount);
+      const rootFrame = { path: root.path, displayPath: root.mount, bytes: 0, parent: null, entries: null, index: 0 };
+      const stack = [rootFrame];
+      while (stack.length) {
+        const frame = stack[stack.length - 1];
+        if (frame.entries === null) {
+          try {
+            frame.entries = await readdir(frame.path, { withFileTypes: true });
+          } catch {
+            result.unreadableDirectories += 1;
+            frame.entries = [];
+          }
+        }
+        if (frame.index >= frame.entries.length) {
+          stack.pop();
+          if (frame.parent) {
+            frame.parent.bytes += frame.bytes;
+            addLargest(result.topFolders, { path: frame.displayPath, bytes: frame.bytes });
+          }
+          continue;
+        }
+
+        const entry = frame.entries[frame.index++];
+        const fullPath = join(frame.path, entry.name);
+        const displayPath = join(frame.displayPath, entry.name);
+        result.scannedEntries += 1;
+        let info;
+        try {
+          info = await lstat(fullPath);
+        } catch {
+          result.unreadableEntries += 1;
+          continue;
+        }
+
+        if (info.isSymbolicLink()) {
+          result.skippedSymlinks += 1;
+        } else if (root.device !== undefined && info.dev !== root.device) {
+          result.skippedMountBoundaries += 1;
+        } else if (info.isDirectory()) {
+          result.scannedDirectories += 1;
+          stack.push({ path: fullPath, displayPath, bytes: 0, parent: frame, entries: null, index: 0 });
+        } else if (info.isFile()) {
+          result.scannedFiles += 1;
+          frame.bytes += info.size;
+          addLargest(result.topFiles, { path: displayPath, bytes: info.size });
+        }
+
+        if (result.scannedEntries % 500 === 0) {
+          result.updatedAt = new Date().toISOString();
+          await new Promise(resolve => setImmediate(resolve));
+        }
       }
+      result.totalBytes = (result.totalBytes || 0) + rootFrame.bytes;
     }
 
     result.topFiles.reverse();
     result.topFolders.reverse();
-    result.status = result.unreadableEntries || result.unreadableDirectories ? "partial" : "complete";
-    result.totalBytes = rootFrame.bytes;
+    result.status = result.unreadableEntries || result.unreadableDirectories || result.unreadableVolumes ? "partial" : "complete";
     result.completedAt = new Date().toISOString();
-    result.detail = "File contents were not opened. Symlinks were skipped. Folder totals include nested contents.";
+    result.detail = "File contents were not opened. Symlinks and nested mount boundaries were skipped; each mounted volume is scanned at most once where detectable.";
   } catch {
     result.status = "error";
     result.completedAt = new Date().toISOString();
@@ -453,7 +495,7 @@ const server = createServer(async (req, res) => {
       return send(res, 403, "text/plain; charset=utf-8", "Same-origin requests without a body only.");
     }
     if (storageScanPromise) return send(res, 409, "application/json; charset=utf-8", JSON.stringify({ status: "scanning", detail: "A storage scan is already running." }));
-    storageScanPromise = scanHomeDirectory().finally(() => { storageScanPromise = null; });
+    storageScanPromise = scanMountedStorage().finally(() => { storageScanPromise = null; });
     return send(res, 202, "application/json; charset=utf-8", JSON.stringify({ status: "scanning" }));
   }
   if (req.url === "/api/speed-test") {
