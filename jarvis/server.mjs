@@ -214,6 +214,8 @@ async function scanHomeDirectory() {
       }
     }
 
+    result.topFiles.reverse();
+    result.topFolders.reverse();
     result.status = result.unreadableEntries || result.unreadableDirectories ? "partial" : "complete";
     result.totalBytes = rootFrame.bytes;
     result.completedAt = new Date().toISOString();
