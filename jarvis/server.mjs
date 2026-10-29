@@ -167,7 +167,10 @@ async function scanMountedStorage() {
     let mounts = volumes
       .filter(volume => typeof volume.mount === "string" && isAbsolute(volume.mount))
       .filter(volume => !["/proc", "/sys", "/dev", "/run"].some(path => volume.mount === path || volume.mount.startsWith(path + sep)));
-    if (!mounts.length) mounts = [{ mount: homedir(), type: "home-folder fallback" }];
+    if (!mounts.length) {
+      mounts = [{ mount: homedir(), type: "home-folder fallback" }];
+      result.usedHomeFallback = true;
+    }
 
     const roots = [];
     for (const volume of mounts) {
@@ -263,9 +266,9 @@ async function scanMountedStorage() {
 
     result.topFiles.reverse();
     result.topFolders.reverse();
-    if (result.status !== "cancelled") result.status = result.unreadableEntries || result.unreadableDirectories || result.unreadableVolumes ? "partial" : "complete";
+    if (result.status !== "cancelled") result.status = result.usedHomeFallback || result.unreadableEntries || result.unreadableDirectories || result.unreadableVolumes ? "partial" : "complete";
     result.completedAt = new Date().toISOString();
-    result.detail = result.status === "cancelled" ? "The scan was stopped by the user; file contents were not opened." : "File contents were not opened. Symlinks and nested mount boundaries were skipped; each mounted volume is scanned at most once where detectable.";
+    result.detail = result.status === "cancelled" ? "The scan was stopped by the user; file contents were not opened." : result.usedHomeFallback ? "Mounted-volume discovery failed; only the home folder was scanned. File contents were not opened." : "File contents were not opened. Symlinks and nested mount boundaries were skipped; each mounted volume is scanned at most once where detectable."
   } catch {
     result.status = "error";
     result.completedAt = new Date().toISOString();
