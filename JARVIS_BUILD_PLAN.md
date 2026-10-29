@@ -34,13 +34,12 @@ Run a basic app locally on the Mac before adding AI, voice, or account integrati
 - Keep `jarvis/index.html` as the existing demo; its replies are still hardcoded and no model is connected.
 - `jarvis/server.mjs` is an optional read-only bridge bound to `127.0.0.1`. It serves the page and telemetry endpoint only.
 - On supported Apple Silicon Macs, the bridge reports every metric exposed by the installed provider: CPU/GPU utilization, temperature and power; GPU frequency; RAM/swap usage and power; Neural Engine power; and each reported fan RPM. It also shows SoC model and core counts.
-- Network counters cover all detected interfaces, with the default interface highlighted. They show live traffic, not an internet speed test; a speed test must be explicitly started in a later step.
+- Network counters cover all detected interfaces, with the default interface highlighted. They show live traffic, distinct from the optional manually started Cloudflare speed test, which sends up to 6 MiB of test payload after a confirmation notice.
 - Voltage input/output and physical board-pin readings remain unavailable until a compatible, documented meter and safe pin map are supported.
 - No API key is needed for telemetry. Keep secrets out of Git; never add fan controls or arbitrary shell/device access.
 
 ## Next chapters
 1. Validate the local bridge on supported macOS versions and models; add only documented sensor providers and keep each reading timestamped.
-2. Add a user-started internet speed test with a clear data-transfer notice.
-3. Add a documented external voltage meter adapter, if a compatible meter is available.
-4. Add separate Windows/Linux providers only where their sensor sources and permission requirements are clear.
-5. Decide separately whether to keep the local HTML app or migrate to Next.js; do not connect a model API until a secure server-side route and key handling are planned.
+2. Add a documented external voltage meter adapter, if a compatible meter is available.
+3. Add separate Windows/Linux providers only where their sensor sources and permission requirements are clear.
+4. Decide separately whether to keep the local HTML app or migrate to Next.js; do not connect a model API until a secure server-side route and key handling are planned.
