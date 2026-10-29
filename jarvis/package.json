@@ -1,0 +1,18 @@
+{
+  "name": "jarvis-local-telemetry",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "systeminformation": "5.33.18"
+  },
+  "optionalDependencies": {
+    "apple-silicon-metrics": "0.1.2"
+  }
+}
