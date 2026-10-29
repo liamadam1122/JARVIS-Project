@@ -1,6 +1,6 @@
 # Developer Learning
 
-This repository is a place to learn by building small projects.
+This repository is building JARVIS as a local-first assistant that understands the computer it runs on. Its focus is evidence-backed system insight—hardware, storage, processes, and network—not generic app-building help.
 
 ## Start here
 
