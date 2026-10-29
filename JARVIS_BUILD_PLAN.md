@@ -4,7 +4,9 @@
 Build JARVIS as a local-first system intelligence assistant that understands the user's computer and explains it with evidence. Helping people build apps is not the product's core.
 
 ## Product distinction
-The target is a time-aware, explainable computer model connecting hardware readings, processes, storage, network activity, and later installed extensions. Findings show their source, sample time, and coverage limits. JARVIS distinguishes facts from hypotheses and never claims overall health from incomplete evidence. Similar monitors and diagnostic assistants already exist, so do not claim nobody has built anything comparable. Differentiate through privacy-first operation, traceable evidence, change-over-time context, and user-approved actions.
+The long-term target is a personal, local computer twin for Liam's real workflows (school, coding, and app development). It learns a privacy-preserving baseline for each chosen workflow, connects changes across hardware, processes, storage, network, and installed extensions, and explains likely causes with sources, timestamps, and confidence.
+
+Its optimization loop should propose one reversible change at a time, state the expected benefit and risk, ask Liam before applying it, then measure before/after under a comparable workload and show whether it helped. No silent cleanup or unverified "speed up" claims. This is a differentiation target, not a claim of proven novelty: system monitors and diagnostic assistants already exist, so do not promise that nobody has built anything similar.
 
 ## First version (MVP)
 - A local system map for hardware, storage, and network readings.
@@ -45,8 +47,9 @@ Run a basic app locally on the Mac before adding AI, voice, or account integrati
 
 ## Next chapters
 1. Add process-level CPU, memory, disk I/O, and network attribution with documented macOS APIs; connect resource spikes to apps without guessing.
-2. Compare local snapshots over time and explain what changed, with an evidence trail and no automatic cleanup.
-3. Add supported extension/plugin and startup-item inventory with explicit permission states.
-4. Validate hardware coverage on supported Mac models; add separate Windows/Linux adapters only where data sources and permissions are documented.
-5. Add voltage-meter support only for a documented, calibrated device and pin map.
-6. Decide separately whether to keep the local HTML app or migrate frameworks. Do not connect a model API until secure server-side key handling and data minimization are planned.
+2. Learn separate local baselines for school, coding, and idle sessions only when Liam chooses those labels; let him inspect and delete the stored history.
+3. Build the first optimization experiment: state a measured issue, offer one reversible change, ask first, and compare fresh before/after readings.
+4. Add supported extension/plugin and startup-item inventory with explicit permission states.
+5. Validate hardware coverage on supported Mac models; add separate Windows/Linux adapters only where data sources and permissions are documented.
+6. Add voltage-meter support only for a documented, calibrated device and pin map.
+7. Decide separately whether to keep the local HTML app or migrate frameworks. Do not connect a model API until secure server-side key handling and data minimization are planned.
