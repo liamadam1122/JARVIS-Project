@@ -92,7 +92,7 @@
     }
     .telemetry-title { color: #c7d7e9; font-size: 12px; font-weight: 700; letter-spacing: .08em; }
     .telemetry-state { color: #9aabc0; font-size: 10px; }
-    .metric-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+    .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 9px; }
     .metric-card { border: 1px solid var(--line); border-radius: 10px; padding: 11px; min-width: 0; }
     .metric-name { display: block; color: var(--muted); font-size: 11px; }
     .metric-value { display: block; margin-top: 5px; color: #d7e2ef; font-size: 13px; font-weight: 650; }
@@ -170,9 +170,14 @@
           </div>
           <div class="metric-grid">
             <div class="metric-card">
-              <span class="metric-name">Voltage sensors</span>
+              <span class="metric-name">Voltage input</span>
               <span class="metric-value">Unavailable</span>
-              <span class="metric-detail">Requires supported local or external sensors</span>
+              <span class="metric-detail">Needs a supported, identified input sensor</span>
+            </div>
+            <div class="metric-card">
+              <span class="metric-name">Voltage output</span>
+              <span class="metric-value">Unavailable</span>
+              <span class="metric-detail">Needs a supported, identified output sensor</span>
             </div>
             <div class="metric-card">
               <span class="metric-name">Temperature</span>
