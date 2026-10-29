@@ -4,7 +4,7 @@ This is an optional, read-only local bridge for the JARVIS demo. It does not use
 
 ## Run
 
-Requirements: Node.js 20 or newer and pnpm.
+Requirements: Node.js 20 or newer and pnpm. Install a current Node.js LTS release from [nodejs.org](https://nodejs.org/en/download) and follow the [pnpm installation guide](https://pnpm.io/installation) if `node -v` or `pnpm -v` is unavailable.
 
 ```sh
 cd jarvis
