@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { randomBytes } from "node:crypto";
 import { lstat, readFile, readdir, realpath } from "node:fs/promises";
-import { homedir } from "node:os";
+import { homedir, networkInterfaces as osNetworkInterfaces } from "node:os";
 import { isAbsolute, join, relative, sep } from "node:path";
 import si from "systeminformation";
 
@@ -277,6 +277,34 @@ async function scanMountedStorage() {
   storageScan = result;
 }
 
+function addSystemInformationReadings(readings, info, sampledAt) {
+  const add = (metric, value, unit, detail, status = "available") => {
+    readings.push(makeReading(metric, value, unit, "systeminformation", sampledAt, detail, status));
+  };
+  const validPercent = value => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100 ? value : null;
+  const gib = value => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value / (1024 ** 3) : null;
+  const memory = info.memory || {};
+  const total = memory.total;
+  const active = Number.isFinite(memory.active) ? memory.active : memory.used;
+  const percent = Number.isFinite(active) && Number.isFinite(total) && total > 0 ? active / total * 100 : null;
+  const gpu = info.graphics?.controllers?.[0] || {};
+
+  add("cpu.usage", validPercent(info.load?.currentLoad), "%", "OS-reported total CPU load (systeminformation).");
+  const cpuTemp = info.temperature?.main;
+  const cpuTempStatus = Number.isFinite(cpuTemp) && (cpuTemp < -40 || cpuTemp > 130) ? "error" : "available";
+  add("temperature.cpu", cpuTemp, "°C", cpuTempStatus === "error" ? "Temperature outside the supported range." : "CPU temperature reported by systeminformation; unsupported on some Macs.", cpuTempStatus);
+  add("gpu.usage", validPercent(gpu.utilizationGpu), "%", "GPU utilization reported by systeminformation; unsupported on some Macs.");
+  const gpuTemp = gpu.temperatureGpu;
+  const gpuTempStatus = Number.isFinite(gpuTemp) && (gpuTemp < -40 || gpuTemp > 130) ? "error" : "available";
+  add("temperature.gpu", gpuTemp, "°C", gpuTempStatus === "error" ? "Temperature outside the supported range." : "GPU temperature reported by systeminformation; unsupported on some Macs.", gpuTempStatus);
+  add("memory.ram.used", gib(active), "GiB", "Active RAM reported by systeminformation; reclaimable cache is excluded.");
+  add("memory.ram.total", gib(total), "GiB", "Total RAM reported by systeminformation.");
+  add("memory.ram.usage", validPercent(percent), "%", "Active RAM as a percentage of total RAM.");
+  add("memory.swap.used", gib(memory.swapused), "GiB", "Swap used as reported by systeminformation.");
+  add("memory.swap.total", gib(memory.swaptotal), "GiB", "Total swap reported by systeminformation.");
+  add("memory.swap.usage", validPercent(Number.isFinite(memory.swapused) && memory.swaptotal > 0 ? memory.swapused / memory.swaptotal * 100 : null), "%", "Swap used as a percentage of reported swap capacity.");
+}
+
 async function collectTelemetry() {
   const now = Date.now();
   if (cachedPayload && now - cachedAt < POLL_CACHE_MS) return cachedPayload;
@@ -289,6 +317,7 @@ async function collectTelemetry() {
     let networkMetadata = [];
     let volumeRows = [];
     let volumeError = false;
+    let systemInfo = { load: null, memory: null, temperature: null, cpu: null, graphics: null };
     let macError = null;
     let networkError = null;
     const jobs = [];
@@ -299,6 +328,11 @@ async function collectTelemetry() {
     jobs.push(si.networkStats("*").then(value => { networkRows = Array.isArray(value) ? value : []; }).catch(error => { networkError = error; }));
     jobs.push(si.networkInterfaces(false).then(value => { networkMetadata = Array.isArray(value) ? value : []; }).catch(() => {}));
     jobs.push(si.fsSize().then(value => { volumeRows = Array.isArray(value) ? value : []; }).catch(() => { volumeError = true; }));
+    jobs.push(si.currentLoad().then(value => { systemInfo.load = value; }).catch(() => {}));
+    jobs.push(si.mem().then(value => { systemInfo.memory = value; }).catch(() => {}));
+    jobs.push(si.cpuTemperature().then(value => { systemInfo.temperature = value; }).catch(() => {}));
+    jobs.push(si.cpu().then(value => { systemInfo.cpu = value; }).catch(() => {}));
+    jobs.push(si.graphics().then(value => { systemInfo.graphics = value; }).catch(() => {}));
     await Promise.all(jobs);
 
     const readings = [
@@ -313,6 +347,33 @@ async function collectTelemetry() {
       addUnavailableAppleReadings(readings, reason, "error");
     } else if (native) {
       addAppleSiliconReadings(readings, native, native.timestamp ?? sampledAt);
+    }
+
+    const fallbacks = [];
+    addSystemInformationReadings(fallbacks, systemInfo, sampledAt);
+    for (const fallback of fallbacks) {
+      const index = readings.findIndex(reading => reading.metric === fallback.metric);
+      if (index === -1) readings.push(fallback);
+      else if (readings[index].status !== "available" && fallback.status === "available") readings[index] = fallback;
+    }
+
+    const systemInterfaces = osNetworkInterfaces();
+    if (!networkMetadata.length) {
+      networkMetadata = Object.entries(systemInterfaces).map(([iface, addresses]) => ({
+        iface,
+        default: false,
+        operstate: addresses?.length ? "unknown" : "down",
+        type: iface === "lo0" || iface === "lo" ? "loopback" : "unknown",
+      }));
+    }
+    networkRows = networkRows.filter(network => typeof network.iface === "string" && network.iface.trim());
+    if (!networkRows.length && networkMetadata.length) {
+      networkRows = networkMetadata.map(network => ({
+        iface: network.iface,
+        operstate: network.operstate,
+        rx_sec: null,
+        tx_sec: null,
+      }));
     }
 
     if (networkError) {
@@ -336,7 +397,7 @@ async function collectTelemetry() {
             ? makeReading(metric, null, "Mbps", source, sampledAt, `Interface ${iface} is down.`, "unavailable")
             : isValid
               ? makeReading(metric, bytesPerSecond * 8 / 1_000_000, "Mbps", source, sampledAt, detail)
-              : makeReading(metric, null, "Mbps", source, sampledAt, "Collecting the first network counter interval.", "unavailable");
+              : makeReading(metric, null, "Mbps", source, sampledAt, "No valid per-interface counter rate was reported by the current provider.", "unavailable");
           readings.push({ ...reading, label: `${iface} ${label}` });
         };
         addNetworkReading("download", network.rx_sec, "download");
@@ -349,13 +410,23 @@ async function collectTelemetry() {
     }
 
     const availableCount = readings.filter(reading => reading.status === "available").length;
-    const device = sampler?.soc ?? native?.soc ?? null;
+    const controllerModels = Array.isArray(systemInfo.graphics?.controllers)
+      ? systemInfo.graphics.controllers.map(controller => [controller.vendor, controller.model].filter(Boolean).join(" ")).filter(Boolean)
+      : [];
+    const device = {
+      ...(sampler?.soc ?? native?.soc ?? {}),
+      cpuBrand: systemInfo.cpu?.brand || null,
+      cpuCores: Number.isFinite(systemInfo.cpu?.physicalCores) ? systemInfo.cpu.physicalCores : systemInfo.cpu?.cores ?? null,
+      memoryGb: Number.isFinite(systemInfo.memory?.total) ? systemInfo.memory.total / (1024 ** 3) : sampler?.soc?.memoryGb ?? null,
+      gpuModels: controllerModels,
+    };
+
     const payload = {
       version: 1,
       sampledAt,
       staleAfterMs: STALE_AFTER_MS,
       state: availableCount ? "partial" : "unavailable",
-      provider: sensorProvider ?? "network counters only",
+      provider: sensorProvider ? `${sensorProvider} + systeminformation` : "systeminformation capability fallback",
       device,
       storageVolumes: volumeError ? null : volumeRows.map(volume => ({
         mount: volume.mount,
