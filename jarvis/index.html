@@ -106,6 +106,12 @@
     .metric-value[data-state="unsupported"] { color: #9aabc0; }
     .metric-detail { display: block; margin-top: 3px; color: #71839a; font-size: 10px; }
     .metric-time { display: block; margin-top: 3px; color: #71839a; font-size: 10px; }
+    .speed-test { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+    .speed-test-copy { margin: 6px 0 10px; color: #9aabc0; font-size: 11px; }
+    .speed-test-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+    .speed-test-button { border: 1px solid rgba(89,220,244,.38); border-radius: 9px; padding: 8px 11px; background: rgba(89,220,244,.07); cursor: pointer; }
+    .speed-test-button:disabled { cursor: wait; opacity: .65; }
+    .speed-test-result { color: #9aabc0; font-size: 11px; }
     .chat { display:grid; gap:18px; padding:0 0 22px; }
     .message { display:flex; gap:12px; align-items:flex-start; animation: rise .25s ease-out; }
     @keyframes rise { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
@@ -187,6 +193,14 @@
             <summary>All detected network interfaces</summary>
             <div class="metric-grid" id="networkGrid"></div>
           </details>
+          <div class="speed-test">
+            <div class="telemetry-title">INTERNET SPEED TEST</div>
+            <p class="speed-test-copy">A manual test sends up to 6 MiB of test payload (5 MiB download, 1 MiB upload) through Cloudflare; connection overhead can add a little. Cloudflare collects completed results for aggregated connection insights. Avoid this on metered data.</p>
+            <div class="speed-test-row">
+              <button class="speed-test-button" id="speedTestButton" type="button">Run speed test</button>
+              <span class="speed-test-result" id="speedTestResult" role="status">Not run</span>
+            </div>
+          </div>
           <div class="metric-detail" style="margin-top:12px">Board-pin voltage needs a compatible meter and a documented pin map. JARVIS will not probe unknown pins.</div>
         </section>
         <div class="composer-wrap">
@@ -212,6 +226,8 @@
     const primaryNetworkGrid = document.getElementById("primaryNetworkGrid");
     const networkGrid = document.getElementById("networkGrid");
     const networkDetails = document.getElementById("networkDetails");
+    const speedTestButton = document.getElementById("speedTestButton");
+    const speedTestResult = document.getElementById("speedTestResult");
     let telemetryCards = [];
     const readingFreshnessMs = 12000;
 
@@ -358,6 +374,24 @@
         markStaleTelemetry();
       }
     }
+
+    speedTestButton.addEventListener("click", async () => {
+      const accepted = window.confirm("Run a short internet speed test? It sends up to 6 MiB of test payload through Cloudflare (5 MiB download and 1 MiB upload); connection overhead can add a little. Cloudflare collects completed results for aggregated connection insights. Do not run this on a metered connection.");
+      if (!accepted) return;
+      speedTestButton.disabled = true;
+      speedTestResult.textContent = "Running a one-time test…";
+      try {
+        const response = await fetch("/api/speed-test", { method: "POST", cache: "no-store" });
+        const result = await response.json();
+        if (!response.ok || result.status !== "available") throw new Error(result.detail || "Speed test unavailable.");
+        const date = new Date(result.sampledAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        speedTestResult.textContent = `Download ${result.downloadMbps.toFixed(1)} Mbps · Upload ${result.uploadMbps.toFixed(1)} Mbps · Cloudflare · ${date}`;
+      } catch (error) {
+        speedTestResult.textContent = error.message || "Speed test failed. Try again later.";
+      } finally {
+        speedTestButton.disabled = false;
+      }
+    });
 
     function addMessage(text, who) {
       const row = document.createElement("div");
