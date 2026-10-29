@@ -179,6 +179,7 @@
         </div>
         <div class="chat" id="chat" aria-live="polite"></div>
         <div class="suggestions" id="suggestions">
+          <button class="suggestion">How can I optimize this Mac?</button>
           <button class="suggestion">What is my GPU doing?</button>
           <button class="suggestion">Can you read my fan speed?</button>
           <button class="suggestion">What is using my disk space?</button>
@@ -561,18 +562,27 @@
       const device = latestTelemetry?.device || {};
       const fresh = reading => isUsableReading(reading) && Date.now() - Date.parse(reading.sampledAt) <= readingFreshnessMs;
       const sampleTime = reading => new Date(reading.sampledAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-      const describe = reading => fresh(reading)
-        ? `${metricLabel(reading)}: ${formatReading(reading.value, reading.unit)} (sampled ${sampleTime(reading)}; ${reading.source}).`
-        : `${metricLabel(reading)}: ${reading.status === "unsupported" ? "unsupported" : "unavailable"}${reading.detail ? ` — ${reading.detail}` : ""}.`;
+      const describe = reading => {
+        if (fresh(reading)) return `${metricLabel(reading)}: ${formatReading(reading.value, reading.unit)} (sampled ${sampleTime(reading)}; ${reading.source}).`;
+        const ageMs = Date.now() - Date.parse(reading.sampledAt || "");
+        const status = reading.status === "unsupported" ? "unsupported"
+          : reading.status === "error" ? "read error"
+            : reading.status === "stale" || reading.status === "available" && ageMs > readingFreshnessMs ? "stale"
+              : "unavailable";
+        return `${metricLabel(reading)}: ${status}${reading.detail ? ` — ${reading.detail}` : ""}.`;
+      };
 
       if (/\b(optim\w*|faster|speed up|improv\w*|unlock\w*|overclock\w*|performance)\b/.test(text)) {
-        const hardware = [device.macModel, device.chipName, device.gpuModels?.join(", ")].filter(Boolean).join(" · ");
+        const hardware = device.macModel || device.chipName || null;
         if (device.macModel || device.chipName) {
           return `For this Mac${hardware ? ` (${hardware})` : ""}, JARVIS has not changed any settings. Apple silicon uses an integrated GPU and macOS manages its power automatically; there is no general GPU-unlock switch. For a game or creative app, try its own render resolution or graphics-quality controls, keep the laptop on a hard surface with vents clear, and compare the same scene before and after. The readings above show what this Mac exposes; temperature and fan readings may not be available. This is local rule-based guidance, not connected AI.`;
         }
         return "JARVIS has not changed any settings. Safe tuning depends on the exact laptop, GPU, cooling, and power adapter. Use the laptop maker’s or GPU maker’s supported tool, change one setting at a time, and compare the same workload. A universal ‘unlock’ or guaranteed 2× gain is not a safe assumption. This is local rule-based guidance, not connected AI.";
       }
-      if (/\b(what (mac|computer|chip|gpu)|which (mac|computer|chip|gpu)|my (mac|computer|chip|gpu))\b/.test(text)) {
+      const asksHardwareIdentity = /\bwhat (?:kind|model|type) of\b/.test(text)
+        || /\b(?:what|which) (?:mac|macbook|computer|chip|gpu)\b/.test(text) && !/\b(?:doing|usage|utilization|activity|working)\b/.test(text)
+        || /\bmy (?:mac|chip|gpu|computer)\b/.test(text) && /\b(?:model|kind|type|specs|hardware)\b/.test(text);
+      if (asksHardwareIdentity) {
         const hardware = [device.macModel, device.chipName ? `${device.chipName} chip` : null,
           device.gpuModels?.length ? `${device.gpuModels.join(", ")} GPU${device.gpuCores ? ` (${device.gpuCores} cores)` : ""}` : null,
           device.memoryGb ? `${device.memoryGb} GiB unified memory` : null,
