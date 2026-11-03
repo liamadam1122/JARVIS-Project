@@ -1,22 +1,7 @@
-JARVIS handoff
+Send your friend JARVIS-Xcode-for-your-friend.zip.
 
-Send your friend the GitHub link, or this whole folder. He cannot upload this file, the zip, or JARVIS.app to the App Store.
+He unzips it and double-clicks JARVIS.xcodeproj. The SwiftUI screen is JARVIS/ContentView.swift. He only pastes that file if he already created his own Mac project. Opening this project is enough.
 
-Apple only accepts a Mac app that was signed with a Mac App Store distribution certificate. This copy is signed on one Mac only, so Transporter and App Store Connect will reject it.
+Then he chooses his Apple team, changes the bundle id to one he owns, and uses Product, Archive, Distribute App, App Store Connect.
 
-Before he can submit anything, these have to be true:
-
-1. The Apple Developer Program membership is active on the account that will own JARVIS. That membership is 99 USD per year.
-2. He is invited to that team in App Store Connect, or he is using his own developer account and you are fine with the app living there.
-3. The app is rebuilt in Xcode with that team's certificate. The bundle id in the project is com.jarvis.desktop.
-4. The rebuild drops the private Apple sensor reader and stops launching a separate Node.js program. The App Store sandbox blocks both.
-
-When that signed build exists, he creates a macOS app in App Store Connect, uploads the build with Apple's Transporter app, and fills in screenshots, a privacy policy, and the age rating.
-
-Until then, people install JARVIS from GitHub:
-
-Windows: jarvis/start-windows.bat
-Mac: jarvis/start-mac.command
-Linux: jarvis/start-linux.sh
-
-Node.js 20 or newer is required. The page opens at http://127.0.0.1:4173
+The steps and the limits are in OPEN-IN-XCODE.txt inside the zip. This Mac build cannot read fan speed or GPU temperature, and it does not tune a Windows gaming PC.
