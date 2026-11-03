@@ -1,0 +1,16 @@
+Send your friend this folder, or the zip of it. He opens JARVIS.xcodeproj in Xcode. He does not paste code unless he already started his own Mac project.
+
+This is a Mac app. It is not an iPhone app. Product, Archive uploads it to App Store Connect only after he signs it with his Apple Developer team.
+
+Steps for him:
+
+1. Install Xcode from the Mac App Store and join the Apple Developer Program. The membership is 99 USD per year.
+2. Double-click JARVIS.xcodeproj.
+3. Click the blue JARVIS project, then the JARVIS target, then Signing and Capabilities.
+4. Choose his Team. Change the bundle id from com.jarvis.desktop to one he owns, such as com.hisname.jarvis. He also creates that id in his Apple developer account.
+5. Menu Product, then Archive. When the archive window opens, choose Distribute App, then App Store Connect, then Upload.
+6. In App Store Connect, open the macOS app record, wait until the build finishes processing, and add the description, screenshots, a privacy policy link, and the age rating. Then submit for review.
+
+If he already has a macOS SwiftUI project, he can replace that project's ContentView.swift with JARVIS/ContentView.swift. The file has to stay in a Mac target. An iPhone target will not compile it.
+
+What this build is: a sandboxed Mac window. It shows CPU load, memory, the Mac model, and the thermal state, then answers with a free plan and a paid plan. Fan speed, GPU temperature, and the Windows gaming-PC tuner are not in this file. Apple rejects those private sensors and a separate Node server.
