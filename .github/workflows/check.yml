@@ -1,0 +1,38 @@
+name: check
+on:
+  push:
+  pull_request:
+jobs:
+  boot:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install
+        working-directory: jarvis
+        run: npm install
+      - name: Syntax
+        working-directory: jarvis
+        run: node --check server.mjs && node --check advise.mjs && node --check chat.mjs && node --check memory.mjs && node --check cloud.mjs && node --check brain.mjs && node --check secrets.mjs && node --check shared-brain.mjs && node --check brain-host.mjs
+      - name: Page responds
+        working-directory: jarvis
+        shell: bash
+        run: |
+          node server.mjs > /tmp/jarvis-server.log 2>&1 &
+          echo $! > /tmp/jarvis-server.pid
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -fsS http://127.0.0.1:4173/ >/dev/null; then
+              curl -fsS http://127.0.0.1:4173/api/telemetry >/dev/null
+              kill "$(cat /tmp/jarvis-server.pid)" || true
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/jarvis-server.log
+          exit 1

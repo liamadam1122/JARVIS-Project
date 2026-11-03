@@ -1,0 +1,1183 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080d16">
+  <title>JARVIS</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #070b12;
+      --panel: rgba(14, 20, 30, .88);
+      --panel-strong: #0d1420;
+      --line: rgba(170, 190, 210, .12);
+      --text: #f2f6fb;
+      --muted: #8b9aab;
+      --cyan: #9ec9d6;
+      --green: #8fbfa8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background: var(--bg);
+      font: 15px/1.55 "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+      letter-spacing: -0.01em;
+    }
+    button, textarea { font: inherit; }
+    button { color: inherit; }
+    .shell { min-height: 100vh; display: grid; grid-template-columns: 220px minmax(0, 1fr); }
+    .shell.machine-open { grid-template-columns: 220px minmax(0, 1fr) min(320px, 36vw); }
+    .sidebar {
+      padding: 28px 18px; border-right: 1px solid var(--line);
+      background: #060a10; display: flex; flex-direction: column; gap: 14px;
+    }
+    .nav-btn {
+      border: 1px solid var(--line); background: transparent; border-radius: 10px;
+      padding: 11px 13px; text-align: left; cursor: pointer; transition: .2s;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px; color: var(--muted);
+    }
+    .nav-btn.active, .nav-btn:hover { color: var(--text); border-color: rgba(158,201,214,.45); background: rgba(158,201,214,.06); }
+    .machine-panel {
+      display: none; border-left: 1px solid var(--line); background: #060a10;
+      padding: 22px 16px; overflow: auto; max-height: 100vh;
+    }
+    .shell.machine-open .machine-panel { display: block; }
+    .machine-panel h2 {
+      margin: 0 0 6px; font-size: 12px; letter-spacing: .16em; font-weight: 600;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #d7e0ea;
+    }
+    .machine-panel .lede { margin: 0 0 16px; color: var(--muted); font-size: 12px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .brand { display: flex; align-items: center; gap: 12px; padding: 0 8px; }
+    .brand-mark, .orb, .avatar.jarvis { position: relative; }
+    .brand-mark {
+      width: 32px; height: 32px; border: 1px solid var(--line);
+      border-radius: 8px; display: grid; place-items: center; color: var(--cyan);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 11px; letter-spacing: 0.16em;
+    }
+    .brand-mark::after, .orb::after, .avatar.jarvis::after {
+      content: "";
+      position: absolute;
+      inset: 1px;
+      border-radius: inherit;
+      border: 1.5px solid transparent;
+      border-top-color: #d7eef4;
+      border-right-color: rgba(158, 201, 214, .35);
+      animation: jarvis-spin 4.2s linear infinite;
+      pointer-events: none;
+    }
+    body.is-thinking .brand-mark::after,
+    body.is-thinking .orb::after,
+    body.is-thinking .avatar.jarvis::after { animation-duration: .85s; }
+    @keyframes jarvis-spin { to { transform: rotate(360deg); } }
+    .brand-name {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px; font-weight: 600; letter-spacing: .22em;
+    }
+    .brand-sub { display: block; color: var(--muted); font-size: 11px; letter-spacing: .02em; margin-top: 3px; font-family: inherit; }
+    .new-chat {
+      border: 1px solid var(--line); background: transparent; border-radius: 10px;
+      padding: 11px 13px; text-align: left; cursor: pointer; transition: .2s;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px;
+    }
+    .new-chat:hover, .suggestion:hover, .chat-link:hover { border-color: rgba(158,201,214,.45); background: rgba(158,201,214,.06); }
+    .chat-label {
+      margin: 4px 10px 0; color: var(--muted); font-size: 10px; letter-spacing: .14em;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .chat-list { display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow: auto; max-height: 28vh; }
+    .chat-row { display: flex; align-items: center; gap: 2px; }
+    .chat-link {
+      flex: 1; min-width: 0; border: 0; background: transparent; text-align: left; cursor: pointer;
+      color: var(--muted); border-radius: 8px; padding: 8px 10px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 12px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .chat-link.active { color: var(--text); background: rgba(158,201,214,.08); }
+    .chat-delete {
+      border: 0; background: transparent; color: #5f7086; cursor: pointer; padding: 6px 8px; border-radius: 8px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 11px;
+    }
+    .chat-delete:hover { color: var(--text); }
+    .pulse {
+      display: flex; flex-direction: column; gap: 8px; margin-top: 8px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .pulse-line { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; letter-spacing: .04em; }
+    .pulse-line b { color: var(--text); font-weight: 550; }
+    .pulse-track { height: 2px; background: rgba(255,255,255,.06); border-radius: 99px; overflow: hidden; }
+    .pulse-track i { display: block; height: 100%; width: 0; background: var(--cyan); transition: width .6s ease; }
+    .pulse-note { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+    .status-card {
+      margin-top: auto; border: 1px solid var(--line); border-radius: 12px; padding: 13px;
+      color: var(--muted); font-size: 12px; background: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .status-dot { display: inline-block; height: 6px; width: 6px; border-radius: 50%; background: var(--green); margin-right: 7px; }
+    main { min-width: 0; display: flex; flex-direction: column; min-height: 100vh; }
+    .topbar {
+      padding: 22px 34px 18px; border-bottom: 1px solid var(--line);
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .top-title {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 12px; color: #d7e0ea; letter-spacing: .18em; font-weight: 600;
+    }
+    .tagline { color: var(--muted); font-size: 13px; max-width: 42rem; line-height: 1.45; margin: 0; }
+    .content { width: min(760px, 100%); margin: 0 auto; padding: 40px 28px 28px; display: flex; flex-direction: column; flex: 1; }
+    .welcome { text-align: center; margin: 28px 0 36px; }
+    .orb {
+      margin: 0 auto 18px; width: 34px; height: 34px; border-radius: 8px;
+      border: 1px solid var(--line); display:grid; place-items:center;
+      color: var(--cyan); font-size: 11px; letter-spacing: 0.16em;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    h1 {
+      font-size: clamp(28px, 4vw, 40px); line-height:1.12; letter-spacing:-.03em; margin:0;
+      font-weight: 500;
+    }
+    .welcome p { color:var(--muted); margin:12px auto 0; max-width: 34rem; font-size: 15px; }
+    .suggestions { display:grid; grid-template-columns:1fr; gap:8px; margin:0 auto; width:min(420px,100%); }
+    .suggestion {
+      text-align:left; cursor:pointer; border: 1px solid var(--line); border-radius: 12px;
+      background: transparent; padding: 13px 15px; color:#c7d3e0; font-size:14px; transition:.2s;
+    }
+    .telemetry {
+      width: 100%; margin: 0 0 14px; padding: 14px;
+      border: 1px solid var(--line); border-radius: 12px;
+      background: transparent;
+    }
+    .machine-panel .metric-grid { grid-template-columns: 1fr; }
+    .telemetry-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      margin-bottom: 12px;
+    }
+    .telemetry-title { color: #c7d7e9; font-size: 12px; font-weight: 700; letter-spacing: .08em; }
+    .telemetry-state { color: #9aabc0; font-size: 10px; }
+    .telemetry-device { margin: 0 0 10px; color: #9aabc0; font-size: 11px; }
+    .network-details { margin-top: 12px; color: #9aabc0; font-size: 11px; }
+    .network-details summary { cursor: pointer; padding: 8px 0; }
+    .network-details[open] .metric-grid { margin-top: 8px; }
+    .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 9px; }
+    .metric-card { border: 1px solid var(--line); border-radius: 10px; padding: 11px; min-width: 0; }
+    .metric-name { display: block; color: var(--muted); font-size: 11px; }
+    .metric-value { display: block; margin-top: 5px; color: #d7e2ef; font-size: 13px; font-weight: 650; }
+    .metric-value[data-state="available"] { color: var(--green); }
+    .metric-value[data-state="stale"] { color: #ffd27a; }
+    .metric-value[data-state="error"] { color: #ff9b9b; }
+    .metric-value[data-state="unsupported"] { color: #9aabc0; }
+    .metric-detail { display: block; margin-top: 3px; color: #71839a; font-size: 10px; white-space: pre-line; }
+    .metric-time { display: block; margin-top: 3px; color: #71839a; font-size: 10px; }
+    .speed-test { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+    .speed-test-copy { margin: 6px 0 10px; color: #9aabc0; font-size: 11px; }
+    .speed-test-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+    .speed-test-button { border: 1px solid rgba(89,220,244,.38); border-radius: 9px; padding: 8px 11px; background: rgba(89,220,244,.07); cursor: pointer; }
+    .speed-test-button:disabled { cursor: wait; opacity: .65; }
+    .speed-test-result { color: #9aabc0; font-size: 11px; }
+    .key-input {
+      width: 100%; margin-top: 6px; border: 1px solid var(--line); border-radius: 9px;
+      background: #0a1018; color: var(--text); padding: 9px 10px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 12px;
+    }
+    .key-input::placeholder { color: #5f7086; }
+    .bubble-meta {
+      display: block; margin-top: 6px; color: #687b91; font-size: 10px; letter-spacing: .02em;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .storage-lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 14px; }
+    .storage-list { margin: 7px 0 0; padding-left: 18px; color: #9aabc0; font-size: 10px; }
+    .storage-list li { margin: 0 0 7px; overflow-wrap: anywhere; }
+    .storage-list strong { color: #d7e2ef; font-weight: 600; }
+    .storage-status { margin-top: 8px; color: #9aabc0; font-size: 11px; }
+    .storage-note { margin: 7px 0; color: #71839a; font-size: 10px; }
+    .chat { display:grid; gap:18px; padding:0 0 22px; }
+    .message { display:flex; gap:12px; align-items:flex-start; animation: rise .25s ease-out; }
+    @keyframes rise { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+    .avatar { flex:0 0 28px; height:28px; display:grid; place-items:center; border-radius:50%; font-size:10px; }
+    .avatar.jarvis { color:var(--cyan); border:1px solid rgba(89,220,244,.38); }
+    .avatar.you { color:#d9e4ff; background:rgba(91,140,255,.22); }
+    .bubble { padding:3px 0; color:#d7e2ef; white-space:pre-wrap; }
+    .bubble.user { color:#f3f7ff; }
+    .composer-wrap { margin-top:auto; position:sticky; bottom:0; padding:16px 0 8px; background:linear-gradient(transparent, var(--bg) 22%); }
+    .composer { border:1px solid var(--line); border-radius:16px; background: var(--panel-strong); padding:14px; }
+    textarea {
+      resize:vertical; min-height:72px; max-height:280px; width:100%; border:0; outline:0;
+      color:var(--text); background:transparent; padding:5px 7px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 15px;
+    }
+    textarea::placeholder { color:#71839a; }
+    .composer-footer { display:flex; align-items:center; justify-content:space-between; padding:4px 2px 0 7px; }
+    .hint { color:#71839a; font-size:11px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .send {
+      border:0; border-radius:8px; color:#07121c; background: var(--cyan);
+      padding:9px 16px; cursor:pointer; font-weight:600; font-size:12px; letter-spacing: 0.04em;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .send:disabled { opacity:.55; cursor:wait; }
+    .note { text-align:center; color:#687b91; font-size:11px; padding:10px 0 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .avatar, .telemetry-title, .metric-name, .speed-test-button {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    @media (max-width:900px) {
+      .shell, .shell.machine-open { grid-template-columns: 1fr; }
+      .sidebar { display:none; }
+      .machine-panel {
+        display: none; position: fixed; inset: 0 0 0 auto; width: min(100%, 340px); z-index: 20;
+        box-shadow: -20px 0 40px rgba(0,0,0,.35);
+      }
+      .shell.machine-open .machine-panel { display: block; }
+      .topbar { padding:16px 18px; }
+      .content { padding:28px 18px 18px; }
+      .welcome { margin-top:12px; }
+      .mobile-machine {
+        display: inline-flex; margin-left: auto; border: 1px solid var(--line); border-radius: 999px;
+        padding: 6px 10px; background: transparent; color: var(--muted); cursor: pointer;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 11px;
+      }
+    }
+    .mobile-machine { display: none; }
+    @media (max-width:900px) {
+      .topbar { flex-direction: row; align-items: flex-start; gap: 12px; }
+      .topbar .copy { min-width: 0; }
+      .mobile-machine { display: inline-flex; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell" id="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">J</div>
+        <div><span class="brand-name">JARVIS</span><span class="brand-sub" id="brandSub">Private · sensors on this Mac</span></div>
+      </div>
+      <button class="new-chat" id="newChat">New conversation</button>
+      <div class="chat-label">CONVERSATIONS</div>
+      <div class="chat-list" id="chatList" aria-label="Saved conversations"></div>
+      <button class="nav-btn" type="button" id="machineToggle">Machine</button>
+      <div class="pulse" id="pulse" aria-label="Live machine pulse">
+        <div class="pulse-line"><span>CPU</span><b id="pulseCpu">—</b></div>
+        <div class="pulse-track"><i id="pulseCpuBar"></i></div>
+        <div class="pulse-line"><span>MEMORY</span><b id="pulseRam">—</b></div>
+        <div class="pulse-track"><i id="pulseRamBar"></i></div>
+        <p class="pulse-note" id="pulseNote">Reading this computer.</p>
+        <button class="nav-btn" type="button" id="markMoment">Mark this moment</button>
+        <p class="pulse-note" id="momentCompare"></p>
+      </div>
+      <div class="status-card" id="statusCard"><span class="status-dot"></span><span id="statusLabel">Checking brain…</span><br><span style="padding-left:14px" id="statusDetail">Chat, memory, and this machine</span></div>
+    </aside>
+    <main>
+      <header class="topbar">
+        <div class="copy">
+          <div class="top-title">JARVIS</div>
+          <p class="tagline">Built for gaming PCs and gaming laptops. On a Mac or a ThinkPad it shows CPU, GPU, memory, and fan speed.</p>
+        </div>
+        <button class="mobile-machine" type="button" id="machineToggleMobile">Machine</button>
+      </header>
+      <section class="content">
+        <div class="welcome" id="welcome">
+          <div class="orb">J</div>
+          <h1>How can I help?</h1>
+          <p>Chat, everyday work, and this laptop or desktop. Open Machine for live specs. JARVIS can see which app is using the most.</p>
+        </div>
+        <div class="chat" id="chat" aria-live="polite"></div>
+        <div class="suggestions" id="suggestions">
+          <button class="suggestion">Summarize this and tell me what matters</button>
+          <button class="suggestion">Help with a work email or short write-up</button>
+          <button class="suggestion">My PC gets hot, the fans are not spinning, and it crashes in games</button>
+          <button class="suggestion">Optimize this PC for gaming</button>
+        </div>
+        <div class="composer-wrap">
+          <form class="composer" id="form">
+            <textarea id="input" rows="2" aria-label="Message JARVIS" placeholder="Message JARVIS"></textarea>
+            <div class="composer-footer"><span class="hint">Return to send · Shift + Return for a new line</span><button class="send" id="send" type="submit">Send</button></div>
+          </form>
+          <div class="note" id="footerNote">Mark a moment in the sidebar, then watch what changed.</div>
+        </div>
+      </section>
+    </main>
+    <aside class="machine-panel" id="machinePanel" aria-label="Machine settings">
+      <h2>MACHINE</h2>
+      <p class="lede">Brain, memory, and live specs for this laptop or desktop.</p>
+      <section class="telemetry" aria-label="Brain configuration">
+        <div class="telemetry-head">
+          <span class="telemetry-title">BRAIN</span>
+          <span class="telemetry-state" id="brainStatus">Checking…</span>
+        </div>
+        <p class="speed-test-copy" id="brainCopy">Everyone uses the same shared online brain. No personal API key. Sensors stay on this computer. Apple iCloud cannot host the brain; the shared server runs the Google model.</p>
+        <p class="metric-detail" id="brainHint" style="margin-top:8px">Checking shared brain…</p>
+        <details id="operatorBrain">
+          <summary class="metric-name" style="cursor:pointer; margin-top:12px">Operator only · one product key for every user</summary>
+          <p class="speed-test-copy">Customers never see this. Put the single Google AI key here once, or set GEMINI_API_KEY on the cloud brain server.</p>
+          <label class="metric-name" for="geminiKeyInput">Shared Google AI key</label>
+          <input class="key-input" id="geminiKeyInput" type="password" autocomplete="off" spellcheck="false" placeholder="AIza… operator key">
+          <label class="metric-name" for="groqKeyInput" style="margin-top:10px">Optional Groq backup</label>
+          <input class="key-input" id="groqKeyInput" type="password" autocomplete="off" spellcheck="false" placeholder="gsk_… optional">
+          <label class="metric-name" style="margin-top:12px; display:flex; gap:8px; align-items:center; cursor:pointer">
+            <input type="checkbox" id="allowLocalToggle"> Allow slow local fallback on this Mac
+          </label>
+          <div class="speed-test-row" style="margin-top:10px">
+            <button class="speed-test-button" id="saveBrainButton" type="button">Save shared key</button>
+            <button class="speed-test-button" id="clearBrainButton" type="button">Clear</button>
+          </div>
+        </details>
+      </section>
+      <section class="telemetry" aria-label="Remembered profile">
+        <div class="telemetry-head">
+          <span class="telemetry-title">MEMORY</span>
+          <span class="telemetry-state" id="memoryStatus">Loading…</span>
+        </div>
+        <div class="telemetry-device" id="memoryProfile">Conversation memory only. PC profile appears after problem-solving.</div>
+        <div class="metric-detail" id="memoryFacts"></div>
+      </section>
+      <section class="telemetry" aria-label="System telemetry">
+        <div class="telemetry-head">
+          <span class="telemetry-title">SYSTEM</span>
+          <span class="telemetry-state" id="telemetryStatus" role="status">Connecting…</span>
+        </div>
+        <div class="telemetry-device" id="telemetryDevice">Waiting for inventory.</div>
+        <div class="telemetry-title" style="margin:0 0 8px">BUSY APPS</div>
+        <div class="metric-detail" id="busyApps">Waiting for a process sample.</div>
+        <div class="metric-grid" id="metricGrid" aria-live="polite">
+          <div class="metric-card"><span class="metric-name">Sensor inventory</span><span class="metric-value">Connecting…</span><span class="metric-detail">Supported local providers only.</span></div>
+        </div>
+        <div class="telemetry-title" style="margin:16px 0 8px">NETWORK</div>
+        <div class="metric-grid" id="primaryNetworkGrid"></div>
+        <details class="network-details" id="networkDetails">
+          <summary>All interfaces</summary>
+          <div class="metric-grid" id="networkGrid"></div>
+        </details>
+        <div class="speed-test">
+          <div class="telemetry-title">SPEED TEST</div>
+          <p class="speed-test-copy">Optional. Sends up to 6 MiB through Cloudflare.</p>
+          <div class="speed-test-row">
+            <button class="speed-test-button" id="speedTestButton" type="button">Run speed test</button>
+            <span class="speed-test-result" id="speedTestResult" role="status">Not run</span>
+          </div>
+        </div>
+      </section>
+      <section class="telemetry" aria-label="Storage inventory">
+        <div class="telemetry-head">
+          <span class="telemetry-title">STORAGE</span>
+          <span class="telemetry-state" id="storageVolumeStatus">Reading…</span>
+        </div>
+        <div class="metric-grid" id="storageVolumeGrid" aria-live="polite"></div>
+        <div class="speed-test" style="margin-top:15px">
+          <div class="telemetry-title">LARGE ITEMS</div>
+          <p class="speed-test-copy">Names and sizes only. Confirm before scanning.</p>
+          <div class="speed-test-row">
+            <button class="speed-test-button" id="storageScanButton" type="button">Scan storage</button>
+            <button class="speed-test-button" id="storageStopButton" type="button" hidden>Stop</button>
+            <span class="storage-status" id="storageScanStatus" role="status">Not scanned</span>
+          </div>
+          <div class="storage-lists">
+            <div><div class="metric-name">Largest folders</div><ol class="storage-list" id="largestFolders"></ol></div>
+            <div><div class="metric-name">Largest files</div><ol class="storage-list" id="largestFiles"></ol></div>
+          </div>
+        </div>
+        </section>
+    </aside>
+  </div>
+  <script>
+    const form = document.getElementById("form");
+    const input = document.getElementById("input");
+    const chat = document.getElementById("chat");
+    const welcome = document.getElementById("welcome");
+    const suggestions = document.getElementById("suggestions");
+    const send = document.getElementById("send");
+    const MEMORY_KEY = "jarvis.session.v2";
+    const LIBRARY_KEY = "jarvis.chats.v1";
+    let conversationHistory = [];
+    let threadId = crypto.randomUUID ? crypto.randomUUID() : `thread-${Date.now()}`;
+
+    function loadLibrary() {
+      try {
+        const data = JSON.parse(localStorage.getItem(LIBRARY_KEY) || "[]");
+        return Array.isArray(data) ? data : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function chatTitle(history) {
+      const first = (history || []).find(turn => turn?.role === "user" && turn.content);
+      return String(first?.content || "New conversation").replace(/\s+/g, " ").trim().slice(0, 48) || "New conversation";
+    }
+
+    function cleanHistory(history) {
+      return (Array.isArray(history) ? history : [])
+        .filter(turn => turn && (turn.role === "user" || turn.role === "assistant") && typeof turn.content === "string")
+        .slice(-40);
+    }
+
+    function renderChatList() {
+      const list = document.getElementById("chatList");
+      const library = loadLibrary();
+      list.replaceChildren(...library.map(item => {
+        const row = document.createElement("div");
+        row.className = "chat-row";
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "chat-link" + (item.id === threadId ? " active" : "");
+        button.textContent = item.title || "New conversation";
+        button.addEventListener("click", () => openSavedChat(item.id));
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "chat-delete";
+        remove.textContent = "Remove";
+        remove.addEventListener("click", () => deleteSavedChat(item.id));
+        row.append(button, remove);
+        return row;
+      }));
+    }
+
+    function deleteSavedChat(id) {
+      const library = loadLibrary().filter(item => item.id !== id);
+      localStorage.setItem(LIBRARY_KEY, JSON.stringify(library));
+      syncChats(library);
+      if (id === threadId) {
+        conversationHistory = [];
+        threadId = crypto.randomUUID ? crypto.randomUUID() : `thread-${Date.now()}`;
+        showThread([]);
+      } else {
+        renderChatList();
+      }
+    }
+
+    function syncChats(library) {
+      fetch("/api/chats", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chats: library }),
+      }).catch(() => {});
+    }
+
+    function saveSession() {
+      try {
+        const history = cleanHistory(conversationHistory);
+        conversationHistory = history;
+        if (history.length) {
+          const library = loadLibrary().filter(item => item.id !== threadId);
+          library.unshift({
+            id: threadId,
+            title: chatTitle(history),
+            history,
+            updatedAt: new Date().toISOString(),
+          });
+          const saved = library.slice(0, 40);
+          localStorage.setItem(LIBRARY_KEY, JSON.stringify(saved));
+          syncChats(saved);
+        }
+        localStorage.setItem(MEMORY_KEY, JSON.stringify({
+          threadId,
+          history,
+          savedAt: new Date().toISOString(),
+        }));
+        renderChatList();
+      } catch { /* ignore quota */ }
+    }
+
+    function showThread(history) {
+      chat.replaceChildren();
+      conversationHistory = cleanHistory(history);
+      const hasMessages = conversationHistory.length > 0;
+      welcome.hidden = hasMessages;
+      suggestions.hidden = hasMessages;
+      for (const turn of conversationHistory) addMessage(turn.content, turn.role === "user" ? "you" : "jarvis");
+      renderChatList();
+    }
+
+    function openSavedChat(id) {
+      if (id === threadId) return;
+      saveSession();
+      const item = loadLibrary().find(entry => entry.id === id);
+      if (!item) return;
+      threadId = item.id;
+      showThread(item.history);
+      input.focus();
+    }
+
+    async function restoreSession() {
+      try {
+        const response = await fetch("/api/chats", { cache: "no-store" });
+        if (response.ok) {
+          const data = await response.json();
+          if (Array.isArray(data.chats) && data.chats.length) {
+            const local = loadLibrary();
+            const merged = [...data.chats];
+            for (const item of local) {
+              if (!merged.some(chat => chat.id === item.id)) merged.push(item);
+            }
+            localStorage.setItem(LIBRARY_KEY, JSON.stringify(merged.slice(0, 40)));
+          }
+        }
+      } catch { /* keep the browser copy */ }
+      try {
+        const library = loadLibrary();
+        const raw = localStorage.getItem(MEMORY_KEY);
+        const current = raw ? JSON.parse(raw) : null;
+        if (!library.length && current && Array.isArray(current.history) && current.history.length) {
+          threadId = typeof current.threadId === "string" ? current.threadId : threadId;
+          conversationHistory = cleanHistory(current.history);
+          saveSession();
+          showThread(conversationHistory);
+          return;
+        }
+        if (current && typeof current.threadId === "string") {
+          const match = library.find(item => item.id === current.threadId);
+          if (match) {
+            threadId = match.id;
+            showThread(match.history);
+            return;
+          }
+        }
+        if (library[0]) {
+          threadId = library[0].id;
+          showThread(library[0].history);
+          return;
+        }
+        renderChatList();
+      } catch {
+        renderChatList();
+      }
+    }
+    const telemetryStatus = document.getElementById("telemetryStatus");
+    const telemetryDevice = document.getElementById("telemetryDevice");
+    const metricGrid = document.getElementById("metricGrid");
+    const primaryNetworkGrid = document.getElementById("primaryNetworkGrid");
+    const networkGrid = document.getElementById("networkGrid");
+    const networkDetails = document.getElementById("networkDetails");
+    const speedTestButton = document.getElementById("speedTestButton");
+    const speedTestResult = document.getElementById("speedTestResult");
+    const storageVolumeGrid = document.getElementById("storageVolumeGrid");
+    const storageVolumeStatus = document.getElementById("storageVolumeStatus");
+    const storageScanButton = document.getElementById("storageScanButton");
+    const storageStopButton = document.getElementById("storageStopButton");
+    const storageScanStatus = document.getElementById("storageScanStatus");
+    const largestFolders = document.getElementById("largestFolders");
+    const largestFiles = document.getElementById("largestFiles");
+    let telemetryCards = [];
+    let latestTelemetry = null;
+    let latestStorageScan = null;
+    let latestSpeedTest = null;
+    let chatBusy = false;
+    let momentMark = null;
+    try { momentMark = JSON.parse(sessionStorage.getItem("jarvis.moment") || "null"); } catch { momentMark = null; }
+    const readingFreshnessMs = 12000;
+    const shell = document.getElementById("shell");
+    const machineToggle = document.getElementById("machineToggle");
+    const machineToggleMobile = document.getElementById("machineToggleMobile");
+    const busyApps = document.getElementById("busyApps");
+
+    function setMachineOpen(open) {
+      shell.classList.toggle("machine-open", open);
+      machineToggle.classList.toggle("active", open);
+      machineToggleMobile.classList.toggle("active", open);
+      machineToggle.setAttribute("aria-pressed", open ? "true" : "false");
+      machineToggleMobile.setAttribute("aria-pressed", open ? "true" : "false");
+    }
+
+    function toggleMachine() {
+      setMachineOpen(!shell.classList.contains("machine-open"));
+    }
+
+    machineToggle.addEventListener("click", toggleMachine);
+    machineToggleMobile.addEventListener("click", toggleMachine);
+    document.getElementById("markMoment").addEventListener("click", () => {
+      const payload = latestTelemetry;
+      momentMark = {
+        at: new Date().toISOString(),
+        cpu: payload ? readingNumber(payload, "cpu.usage") : null,
+        ram: payload ? readingNumber(payload, "memory.ram.usage") : null,
+      };
+      sessionStorage.setItem("jarvis.moment", JSON.stringify(momentMark));
+      if (payload) updatePulse(payload);
+      document.getElementById("momentCompare").textContent = "This moment is marked. The lines above will show what moves.";
+    });
+
+    function isUsableReading(reading) {
+      if (reading?.status !== "available" || typeof reading.value !== "number" || !Number.isFinite(reading.value)) return false;
+      if (typeof reading.source !== "string" || !reading.source.trim()) return false;
+      const sampledAt = Date.parse(reading.sampledAt || "");
+      return Number.isFinite(sampledAt) && sampledAt <= Date.now() + 60_000;
+    }
+
+    function metricLabel(reading) {
+      if (reading.label) return reading.label;
+      const labels = {
+        "voltage.input": "Voltage input",
+        "voltage.output": "Voltage output",
+        "temperature.cpu": "CPU temperature",
+        "temperature.gpu": "GPU temperature",
+        "cpu.usage": "CPU utilization",
+        "cpu.power": "CPU power",
+        "gpu.usage": "GPU utilization",
+        "gpu.frequency": "GPU frequency",
+        "gpu.power": "GPU power",
+        "memory.ram.used": "RAM used",
+        "memory.ram.total": "RAM total",
+        "memory.ram.usage": "RAM utilization",
+        "memory.ram.power": "RAM power",
+        "memory.swap.used": "Swap used",
+        "memory.swap.total": "Swap total",
+        "memory.swap.usage": "Swap utilization",
+        "accelerator.ane.power": "Neural Engine power",
+        "thermal.pressure": "Thermal pressure",
+        "fan.rpm": "Fan speed",
+      };
+      if (labels[reading.metric]) return labels[reading.metric];
+      const fan = reading.metric.match(/^fan\.rpm(?:_max)?\.(.+)$/);
+      if (fan) return `${fan[1]} fan ${reading.metric.includes("_max") ? "maximum speed" : "speed"}`;
+      return reading.metric.split(".").map(part => part.replaceAll("_", " ")).join(" · ");
+    }
+
+    function formatReading(value, unit) {
+      if (unit === "rpm" || unit === "MHz" || unit === "level") return `${Math.round(value)} ${unit}`;
+      if (unit === "%") return `${value.toFixed(1)}%`;
+      if (unit === "°C" || unit === "W" || unit === "GiB") return `${value.toFixed(1)} ${unit}`;
+      if (unit === "Mbps") return `${value >= 100 ? value.toFixed(0) : value >= 10 ? value.toFixed(1) : value.toFixed(2)} Mbps`;
+      return `${value} ${unit || ""}`.trim();
+    }
+
+    function createMetricCard(reading) {
+      const card = document.createElement("div");
+      card.className = "metric-card";
+      card.dataset.metric = reading.metric;
+      const name = document.createElement("span");
+      name.className = "metric-name";
+      name.textContent = metricLabel(reading);
+      const value = document.createElement("span");
+      value.className = "metric-value";
+      value.dataset.value = "true";
+      const usable = isUsableReading(reading);
+      const status = usable ? "available" : reading.status === "available" ? "error" : reading.status || "unavailable";
+      const showStaleValue = reading.status === "stale" && typeof reading.value === "number" && Number.isFinite(reading.value);
+      value.textContent = usable
+        ? formatReading(reading.value, reading.unit)
+        : showStaleValue ? `Stale · ${formatReading(reading.value, reading.unit)}`
+          : status === "unsupported" ? "Unsupported"
+            : status === "error" ? "Read error" : "Unavailable";
+      value.dataset.state = status;
+      value.dataset.lastValue = typeof reading.value === "number" && Number.isFinite(reading.value)
+        ? formatReading(reading.value, reading.unit) : "Unavailable";
+      const detail = document.createElement("span");
+      detail.className = "metric-detail";
+      detail.dataset.detail = "true";
+      detail.textContent = usable || reading.status !== "available"
+        ? reading.detail || `Source: ${reading.source || "unspecified"}`
+        : "The provider omitted a valid number, source, or sample time; this value is hidden.";
+      const time = document.createElement("time");
+      time.className = "metric-time";
+      const parsedTime = reading.sampledAt ? new Date(reading.sampledAt) : null;
+      if (parsedTime && Number.isFinite(parsedTime.getTime())) {
+        time.dateTime = parsedTime.toISOString();
+        time.textContent = `Sampled ${parsedTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+      } else {
+        time.textContent = "No sample time";
+      }
+      card.dataset.sampledAt = parsedTime && Number.isFinite(parsedTime.getTime()) ? parsedTime.toISOString() : "";
+      card.dataset.status = status;
+      card.dataset.lastDetail = detail.textContent;
+      card.append(name, value, detail, time);
+      return card;
+    }
+
+    function formatBytes(bytes) {
+      if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes < 0) return "Unavailable";
+      const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+      let value = bytes;
+      let unitIndex = 0;
+      while (value >= 1024 && unitIndex < units.length - 1) { value /= 1024; unitIndex += 1; }
+      return `${value.toFixed(unitIndex ? 1 : 0)} ${units[unitIndex]}`;
+    }
+
+    function renderStorageVolumes(volumes) {
+      if (!Array.isArray(volumes)) {
+        storageVolumeStatus.textContent = "Volume inventory unavailable";
+        storageVolumeGrid.replaceChildren();
+        return;
+      }
+      const cards = volumes.map(volume => {
+        const card = document.createElement("div");
+        card.className = "metric-card";
+        const name = document.createElement("span");
+        name.className = "metric-name";
+        name.textContent = `${volume.mount || "Mounted volume"} · ${volume.filesystem || volume.type || "filesystem unavailable"}`;
+        const value = document.createElement("span");
+        value.className = "metric-value";
+        value.textContent = `${formatBytes(volume.usedBytes)} used / ${formatBytes(volume.sizeBytes)}`;
+        const detail = document.createElement("span");
+        detail.className = "metric-detail";
+        const percent = typeof volume.usePercent === "number" && Number.isFinite(volume.usePercent) ? ` · ${volume.usePercent.toFixed(1)}% used` : "";
+        detail.textContent = `${formatBytes(volume.availableBytes)} available${percent}`;
+        card.append(name, value, detail);
+        return card;
+      });
+      storageVolumeGrid.replaceChildren(...cards);
+      storageVolumeStatus.textContent = `${volumes.length} mounted volume entries · capacity figures can overlap on APFS`;
+    }
+
+    function renderLargestItems(container, items) {
+      const rows = Array.isArray(items) ? items.map(item => {
+        const row = document.createElement("li");
+        const label = document.createElement("strong");
+        label.textContent = formatBytes(item.bytes);
+        row.append(label, document.createTextNode(` · ${item.path}`));
+        return row;
+      }) : [];
+      container.replaceChildren(...rows);
+    }
+
+    async function refreshStorageScan() {
+      try {
+        const response = await fetch("/api/storage-scan", { cache: "no-store" });
+        if (!response.ok) throw new Error("Storage scan status unavailable.");
+        const scan = await response.json();
+        latestStorageScan = scan;
+        if (scan.status === "scanning") {
+          storageScanStatus.textContent = `Scanning ${scan.scannedVolumes?.length || 0} mounted volumes · ${scan.scannedEntries || 0} entries · ${scan.scannedFiles || 0} files`;
+          storageScanButton.disabled = true;
+          storageStopButton.hidden = false;
+          storageStopButton.disabled = false;
+          return;
+        }
+        storageScanButton.disabled = false;
+        storageStopButton.hidden = true;
+        if (scan.status === "idle") return;
+        const state = scan.status === "complete" ? "Complete" : scan.status === "partial" ? "Partial scan" : scan.status === "cancelled" ? "Stopped" : "Scan error";
+        const counts = `${scan.scannedVolumes?.length || 0} volumes · ${scan.scannedFiles || 0} files · ${scan.scannedDirectories || 0} folders`;
+        const inaccessible = scan.unreadableEntries || scan.unreadableDirectories || scan.unreadableVolumes
+          ? ` · ${(scan.unreadableEntries || 0) + (scan.unreadableDirectories || 0) + (scan.unreadableVolumes || 0)} unreadable locations` : scan.usedHomeFallback ? " · volume discovery failed; home only" : "";
+        storageScanStatus.textContent = `${state} · ${counts}${inaccessible}`;
+        renderLargestItems(largestFolders, scan.topFolders);
+        renderLargestItems(largestFiles, scan.topFiles);
+      } catch {
+        storageScanStatus.textContent = "Local storage scan service unavailable";
+        storageScanButton.disabled = false;
+      }
+    }
+
+    function renderTelemetry(payload) {
+      latestTelemetry = payload;
+      const readings = Array.isArray(payload.readings)
+        ? payload.readings.filter(reading => reading && typeof reading.metric === "string") : [];
+      const networkReadings = readings.filter(reading => reading.metric.startsWith("network."));
+      const hardwareReadings = readings.filter(reading => !reading.metric.startsWith("network."));
+      const interfaces = Array.isArray(payload.capabilities?.networkInterfaces) ? payload.capabilities.networkInterfaces : [];
+      const defaultInterface = payload.capabilities?.defaultNetworkInterface;
+      const defaultCards = defaultInterface
+        ? networkReadings.filter(reading => reading.label?.startsWith(`${defaultInterface} `)).map(createMetricCard)
+        : [];
+      const networkCards = networkReadings.map(createMetricCard);
+      const hardwareCards = hardwareReadings.map(createMetricCard);
+      telemetryCards = [...hardwareCards, ...defaultCards, ...networkCards];
+      metricGrid.replaceChildren(...hardwareCards);
+      primaryNetworkGrid.replaceChildren(...defaultCards);
+      if (!defaultCards.length) {
+        const note = document.createElement("div");
+        note.className = "metric-detail";
+        note.textContent = "No default network interface was identified.";
+        primaryNetworkGrid.replaceChildren(note);
+      }
+      networkGrid.replaceChildren(...networkCards);
+      networkDetails.querySelector("summary").textContent = `All detected network interfaces (${interfaces.length}) · live traffic, not a speed test`;
+      const device = payload.device;
+      const cpuCores = device?.ecpuCores || device?.pcpuCores
+        ? `${device.ecpuCores || 0} efficiency + ${device.pcpuCores || 0} performance CPU cores` : null;
+      const deviceParts = device ? [device.macModel, device.chipName ? `${device.chipName} chip` : null,
+        Array.isArray(device.gpuModels) && device.gpuModels.length ? `${device.gpuModels.join(", ")} GPU` : null,
+        device.gpuCores ? `${device.gpuCores} GPU cores` : null,
+        device.memoryGb ? `${device.memoryGb} GiB ${device.platform === "darwin" ? "unified memory" : "RAM"}` : null,
+        device.cpuBrand, device.cpuCores ? `${device.cpuCores} CPU cores` : cpuCores]
+        .filter(value => typeof value === "string" && value.trim() || typeof value === "number") : [];
+      const kind = payload.device?.formFactor === "laptop" ? "Laptop" : payload.device?.formFactor === "desktop" ? "Desktop PC" : null;
+      if (kind) deviceParts.unshift(kind);
+      telemetryDevice.textContent = deviceParts.length ? deviceParts.join(" · ") : "Device details unavailable from the current provider.";
+      const apps = Array.isArray(payload.busyApps) ? payload.busyApps : [];
+      const heavyNames = new Set((payload.heavyApps || []).map(app => app.name));
+      busyApps.textContent = apps.length
+        ? apps.map(app => `${heavyNames.has(app.name) ? "Heavy · " : ""}${app.name} · CPU ${app.cpu}% · memory ${app.mem}%`).join("\n")
+        : "No busy apps reported.";
+      renderStorageVolumes(payload.storageVolumes);
+      const availableCount = readings.filter(isUsableReading).length;
+      telemetryStatus.textContent = `${availableCount} readings live`;
+      updatePulse(payload);
+    }
+
+    function readingNumber(payload, metric) {
+      const reading = (payload?.readings || []).find(item => item.metric === metric && item.status === "available" && Number.isFinite(item.value));
+      return reading ? reading.value : null;
+    }
+
+    function updatePulse(payload) {
+      const cpu = readingNumber(payload, "cpu.usage");
+      const ram = readingNumber(payload, "memory.ram.usage");
+      const heavy = (payload?.heavyApps || payload?.busyApps || [])[0];
+      document.getElementById("pulseCpu").textContent = cpu == null ? "Unavailable" : `${cpu.toFixed(0)}%`;
+      document.getElementById("pulseRam").textContent = ram == null ? "Unavailable" : `${ram.toFixed(0)}%`;
+      document.getElementById("pulseCpuBar").style.width = `${Math.max(0, Math.min(100, cpu || 0))}%`;
+      document.getElementById("pulseRamBar").style.width = `${Math.max(0, Math.min(100, ram || 0))}%`;
+      document.getElementById("pulseNote").textContent = heavy
+        ? `${heavy.name} is using the most right now.`
+        : "No single app is standing out.";
+      const saved = momentMark;
+      const compare = document.getElementById("momentCompare");
+      if (!saved) {
+        compare.textContent = "";
+        return;
+      }
+      const parts = [];
+      if (saved.cpu != null && cpu != null) parts.push(`CPU ${saved.cpu.toFixed(0)}% to ${cpu.toFixed(0)}%`);
+      if (saved.ram != null && ram != null) parts.push(`memory ${saved.ram.toFixed(0)}% to ${ram.toFixed(0)}%`);
+      const when = new Date(saved.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      compare.textContent = parts.length
+        ? `Since ${when}: ${parts.join(", ")}. ${heavy ? heavy.name + " leads now." : ""}`.trim()
+        : `Marked at ${when}. Waiting for the next reading.`;
+    }
+
+    function markStaleTelemetry() {
+      const now = Date.now();
+      telemetryCards.forEach(card => {
+        const sampledAt = Date.parse(card.dataset.sampledAt || "");
+        if (card.dataset.status !== "available" || !Number.isFinite(sampledAt)) return;
+        if (now - sampledAt <= readingFreshnessMs) return;
+        const valueNode = card.querySelector("[data-value]");
+        valueNode.textContent = `Stale · ${valueNode.dataset.lastValue}`;
+        valueNode.dataset.state = "stale";
+        card.querySelector("[data-detail]").textContent = card.dataset.lastDetail + " · Waiting for a fresh reading.";
+        card.dataset.status = "stale";
+      });
+    }
+
+    async function refreshTelemetry() {
+      if (chatBusy) return;
+      try {
+        const response = await fetch("/api/telemetry", { cache: "no-store" });
+        if (!response.ok) throw new Error("Local telemetry request failed.");
+        renderTelemetry(await response.json());
+      } catch {
+        telemetryStatus.textContent = "Local telemetry bridge not running";
+        markStaleTelemetry();
+      }
+    }
+
+    storageScanButton.addEventListener("click", async () => {
+      const accepted = window.confirm("JARVIS will scan all accessible mounted volumes, including hidden items and any mounted removable or network storage. It reads file and folder names and size metadata only; it does not open file contents, save results, or upload them. Protected locations may be inaccessible. The scan can take a long time; unmount anything you do not want included. Start?");
+      if (!accepted) return;
+      storageScanButton.disabled = true;
+      storageScanStatus.textContent = "Starting local scan…";
+      try {
+        const response = await fetch("/api/storage-scan", { method: "POST", cache: "no-store" });
+        if (!response.ok && response.status !== 409) throw new Error("Could not start the storage scan.");
+        await refreshStorageScan();
+      } catch {
+        storageScanStatus.textContent = "Could not start the local storage scan.";
+        storageScanButton.disabled = false;
+      }
+    });
+    storageStopButton.addEventListener("click", async () => {
+      storageStopButton.disabled = true;
+      storageScanStatus.textContent = "Stopping scan…";
+      try {
+        const response = await fetch("/api/storage-scan/stop", { method: "POST", cache: "no-store" });
+        if (!response.ok && response.status !== 409) throw new Error("Stop request failed.");
+      } catch {
+        storageScanStatus.textContent = "Could not stop the scan. You can stop the local bridge with Control+C.";
+      }
+    });
+    window.setInterval(() => {
+      if (!chatBusy) refreshStorageScan();
+    }, 1500);
+    refreshStorageScan();
+
+    speedTestButton.addEventListener("click", async () => {
+      const accepted = window.confirm("Run a short internet speed test? It sends up to 6 MiB of test payload through Cloudflare (5 MiB download and 1 MiB upload); connection overhead can add a little. Cloudflare collects completed results for aggregated connection insights. Do not run this on a metered connection.");
+      if (!accepted) return;
+      speedTestButton.disabled = true;
+      speedTestResult.textContent = "Running a one-time test…";
+      try {
+        const response = await fetch("/api/speed-test", { method: "POST", cache: "no-store" });
+        const result = await response.json();
+        latestSpeedTest = result;
+        if (!response.ok || result.status !== "available") throw new Error(result.detail || "Speed test unavailable.");
+        const date = new Date(result.sampledAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        speedTestResult.textContent = `Download ${result.downloadMbps.toFixed(1)} Mbps · Upload ${result.uploadMbps.toFixed(1)} Mbps · Cloudflare · ${date}`;
+      } catch (error) {
+        latestSpeedTest = { status: "error" };
+        speedTestResult.textContent = error.message || "Speed test failed. Try again later.";
+      } finally {
+        speedTestButton.disabled = false;
+      }
+    });
+
+    const brandSub = document.getElementById("brandSub");
+    const statusLabel = document.getElementById("statusLabel");
+    const statusDetail = document.getElementById("statusDetail");
+    const brainStatus = document.getElementById("brainStatus");
+    const brainHint = document.getElementById("brainHint");
+    const groqKeyInput = document.getElementById("groqKeyInput");
+    const geminiKeyInput = document.getElementById("geminiKeyInput");
+    const allowLocalToggle = document.getElementById("allowLocalToggle");
+    const memoryStatus = document.getElementById("memoryStatus");
+    const memoryProfile = document.getElementById("memoryProfile");
+    const memoryFacts = document.getElementById("memoryFacts");
+    const footerNote = document.getElementById("footerNote");
+    const operatorBrain = document.getElementById("operatorBrain");
+    const brainCopy = document.getElementById("brainCopy");
+    let cloudReady = false;
+
+    function providerLabel(provider, model) {
+      if (provider === "shared" || String(model || "").startsWith("shared:") || String(model || "").startsWith("gemini:") || provider === "gemini") return "via shared Google brain";
+      if (provider === "groq" || String(model || "").startsWith("groq:")) return "via shared online brain";
+      if (provider === "local-fallback") return "online failed · local fallback";
+      if (String(model || "").startsWith("ollama:") || provider === "local") return "via local Ollama (this Mac)";
+      if (model === "intake") return "intake";
+      return model || "JARVIS";
+    }
+
+    async function refreshBrain() {
+      try {
+        const response = await fetch("/api/brain", { cache: "no-store" });
+        if (!response.ok) throw new Error("Brain status failed");
+        const status = await response.json();
+        cloudReady = Boolean(status.cloudReady);
+        brainStatus.textContent = status.label;
+        const remote = Boolean(status.remote);
+        operatorBrain.hidden = remote;
+        if (!cloudReady && !remote) operatorBrain.open = true;
+        statusLabel.textContent = cloudReady
+          ? "Shared brain · online"
+          : "Shared brain offline";
+        statusDetail.textContent = cloudReady
+          ? "No personal key · heavy thinking stays off this Mac"
+          : "One product key on the server, not one key per person";
+        brandSub.textContent = cloudReady
+          ? "Shared online brain"
+          : "Shared brain not connected";
+        footerNote.textContent = cloudReady
+          ? "Shared online replies · specs unlock only for diagnose/optimize."
+          : "Shared brain is not live yet. Customers still do not paste keys.";
+        brainCopy.textContent = remote
+          ? `Connected to the shared cloud brain. Nobody on this computer needs an API key.`
+          : "Everyone uses the same shared online brain. No personal API key. Sensors stay on this computer. Apple iCloud cannot host the brain; the shared server runs the Google model.";
+        if (allowLocalToggle) allowLocalToggle.checked = Boolean(status.allowLocal);
+        brainHint.textContent = cloudReady
+          ? "Ready. This Mac only sends the message. Google does the heavy work for every user."
+          : "The shared server still needs its one Google AI key. That is an operator setup, not a step for each person.";
+      } catch {
+        brainStatus.textContent = "Brain status unavailable";
+      }
+    }
+
+    async function refreshMemory() {
+      try {
+        const response = await fetch("/api/memory", { cache: "no-store" });
+        if (!response.ok) throw new Error("Memory unavailable");
+        const data = await response.json();
+        const profile = data.profile || {};
+        const bits = [
+          profile.games ? `Games: ${profile.games}` : null,
+          profile.budget ? `Budget: ${profile.budget}` : null,
+          profile.notes ? `Notes: ${profile.notes}` : null,
+        ].filter(Boolean);
+        memoryProfile.textContent = bits.length
+          ? bits.join(" · ")
+          : "No profile yet. JARVIS can still see live specs and busy apps.";
+        memoryStatus.textContent = data.updatedAt
+          ? `Updated ${new Date(data.updatedAt).toLocaleString([], { hour: "2-digit", minute: "2-digit" })}`
+          : "Empty";
+        const cases = Array.isArray(data.cases) ? data.cases.slice(-2) : [];
+        memoryFacts.textContent = cases.length
+          ? cases.map(item => item.problem).join(" · ")
+          : "Past problems will stay here after you ask.";
+      } catch {
+        memoryStatus.textContent = "Memory unavailable";
+      }
+    }
+
+    document.getElementById("saveBrainButton").addEventListener("click", async () => {
+      const button = document.getElementById("saveBrainButton");
+      button.disabled = true;
+      try {
+        const response = await fetch("/api/brain", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            groqKey: groqKeyInput.value.trim() || undefined,
+            geminiKey: geminiKeyInput.value.trim() || undefined,
+            allowLocal: allowLocalToggle.checked,
+          }),
+        });
+        if (!response.ok) throw new Error("Save failed");
+        groqKeyInput.value = "";
+        geminiKeyInput.value = "";
+        await refreshBrain();
+        brainHint.textContent = cloudReady
+          ? "Saved. Every user of this server now shares that one online brain."
+          : "Saved. The shared brain still needs a Google AI key.";
+      } catch {
+        brainHint.textContent = "Could not save keys. Try again.";
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    document.getElementById("clearBrainButton").addEventListener("click", async () => {
+      await fetch("/api/brain", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clearGroq: true, clearGemini: true, allowLocal: false }),
+      });
+      groqKeyInput.value = "";
+      geminiKeyInput.value = "";
+      allowLocalToggle.checked = false;
+      groqKeyInput.placeholder = "gsk_… optional";
+      geminiKeyInput.placeholder = "AIza… operator key";
+      await refreshBrain();
+    });
+
+    allowLocalToggle.addEventListener("change", async () => {
+      await fetch("/api/brain", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ allowLocal: allowLocalToggle.checked }),
+      });
+      await refreshBrain();
+    });
+
+    function addMessage(text, who, meta) {
+      const row = document.createElement("div");
+      row.className = "message";
+      const avatar = document.createElement("div");
+      avatar.className = "avatar " + (who === "you" ? "you" : "jarvis");
+      avatar.textContent = who === "you" ? "You" : "J";
+      const bubble = document.createElement("div");
+      bubble.className = "bubble " + (who === "you" ? "user" : "");
+      const body = document.createElement("div");
+      body.textContent = text;
+      bubble.append(body);
+      if (meta) {
+        const note = document.createElement("span");
+        note.className = "bubble-meta";
+        note.textContent = meta;
+        bubble.append(note);
+      }
+      row.append(avatar, bubble);
+      chat.append(row);
+      row.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      return { bubble, body };
+    }
+
+    async function submitMessage(text) {
+      const message = text.trim();
+      if (!message || send.disabled) return;
+      if (!cloudReady && !allowLocalToggle.checked) {
+        setMachineOpen(true);
+        operatorBrain.open = true;
+        brainHint.textContent = "Shared brain is not live yet. One product key goes on the server. People using the app do not paste keys.";
+        addMessage(
+          "The shared online brain is not connected yet. This is one server setup for everybody, not a personal API key. Apple iCloud cannot host it.",
+          "jarvis",
+          "shared brain",
+        );
+        return;
+      }
+      welcome.hidden = true;
+      suggestions.hidden = true;
+      if (!momentMark && latestTelemetry) {
+        momentMark = {
+          at: new Date().toISOString(),
+          cpu: readingNumber(latestTelemetry, "cpu.usage"),
+          ram: readingNumber(latestTelemetry, "memory.ram.usage"),
+        };
+        sessionStorage.setItem("jarvis.moment", JSON.stringify(momentMark));
+        updatePulse(latestTelemetry);
+      }
+      const momentText = document.getElementById("momentCompare").textContent;
+      addMessage(message, "you");
+      conversationHistory.push({ role: "user", content: message });
+      input.value = "";
+      send.disabled = true;
+      chatBusy = true;
+      const reply = addMessage("Thinking", "jarvis");
+      const thinkingLines = ["Thinking", "Finishing up", "Giving the last touches", "Dotting the i's"];
+      let thinkingStep = 0;
+      document.body.classList.add("is-thinking");
+      const thinkingTimer = window.setInterval(() => {
+        thinkingStep = (thinkingStep + 1) % thinkingLines.length;
+        reply.body.textContent = thinkingLines[thinkingStep];
+      }, 1400);
+      try {
+        const response = await fetch("/api/advise", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mode: "chat",
+            question: message,
+            threadId,
+            moment: momentText,
+            history: conversationHistory.slice(0, -1).slice(-16),
+          }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.detail || "Advisor unavailable.");
+        window.clearInterval(thinkingTimer);
+        document.body.classList.remove("is-thinking");
+        reply.body.textContent = result.reply || "No reply.";
+        conversationHistory.push({ role: "assistant", content: reply.body.textContent });
+        saveSession();
+        refreshMemory();
+      } catch (error) {
+        window.clearInterval(thinkingTimer);
+        document.body.classList.remove("is-thinking");
+        reply.body.textContent = error.message || "The advisor failed. Confirm the JARVIS server is running at http://127.0.0.1:4173.";
+      } finally {
+        window.clearInterval(thinkingTimer);
+        document.body.classList.remove("is-thinking");
+        chatBusy = false;
+        send.disabled = false;
+        input.focus();
+        refreshTelemetry();
+      }
+    }
+
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+      submitMessage(input.value);
+    });
+    input.addEventListener("keydown", event => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        form.requestSubmit();
+      }
+    });
+    suggestions.addEventListener("click", event => {
+      const button = event.target.closest("button");
+      if (button) submitMessage(button.textContent);
+    });
+    document.getElementById("newChat").addEventListener("click", () => {
+      saveSession();
+      conversationHistory = [];
+      threadId = crypto.randomUUID ? crypto.randomUUID() : `thread-${Date.now()}`;
+      input.value = "";
+      showThread([]);
+      input.focus();
+    });
+    restoreSession();
+    setMachineOpen(false);
+    refreshBrain();
+    refreshMemory();
+    refreshTelemetry();
+    window.setInterval(() => {
+      const intervalMs = shell.classList.contains("machine-open") ? 4000 : 12000;
+      if (!refreshTelemetry._nextAt || Date.now() >= refreshTelemetry._nextAt) {
+        refreshTelemetry._nextAt = Date.now() + intervalMs;
+        refreshTelemetry();
+      }
+    }, 1000);
+    window.setInterval(markStaleTelemetry, 1000);
+  </script>
+</body>
+</html>

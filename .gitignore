@@ -1,0 +1,5 @@
+node_modules/
+.pnpm-store/
+.DS_Store
+jarvis/data/
+jarvis/macos/JARVIS.app/
