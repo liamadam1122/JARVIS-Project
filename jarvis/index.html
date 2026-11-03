@@ -266,6 +266,8 @@
         <button class="nav-btn" type="button" id="markMoment">Mark this moment</button>
         <p class="pulse-note" id="momentCompare"></p>
       </div>
+      <button class="nav-btn" type="button" id="payButton">Pay the maker</button>
+      <p class="pulse-note" id="payNote">The app stays free. PayPal sends the money to the maker and keeps a small fee.</p>
       <div class="status-card" id="statusCard"><span class="status-dot"></span><span id="statusLabel">Checking brain…</span><br><span style="padding-left:14px" id="statusDetail">Chat, memory, and this machine</span></div>
     </aside>
     <main>
@@ -584,6 +586,9 @@
     }
 
     machineToggle.addEventListener("click", toggleMachine);
+    document.getElementById("payButton").addEventListener("click", () => {
+      window.open("https://www.paypal.com/donate?business=liamadam1122%40gmail.com&currency_code=EUR&item_name=JARVIS", "_blank", "noopener");
+    });
     machineToggleMobile.addEventListener("click", toggleMachine);
     document.getElementById("markMoment").addEventListener("click", () => {
       const payload = latestTelemetry;
