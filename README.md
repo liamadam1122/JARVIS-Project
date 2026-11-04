@@ -16,7 +16,7 @@ Windows gaming laptop: download `JARVIS-gaming-laptop.zip`.
 
 Any other Windows computer: download `JARVIS-windows-computer.zip`.
 
-Those three Windows files are the same app. Pick the name that matches the computer. Unzip the folder, then double-click `JARVIS.cmd`. Node is already inside the zip. You do not install Node.js separately, and you do not open the `app` folder.
+Those three Windows files are the same app. Pick the name that matches the computer. Right-click the zip → Extract All / Alles uitpakken → open the new folder → double-click `JARVIS.cmd`. Do not open files from inside the zip window. Node is already inside. You do not install Node.js, and you do not open the `app` folder. You can also download `Open-JARVIS.cmd` from the release and double-click that while the zip sits in Downloads.
 
 The source in this repository also runs without those downloads. From source on Windows, Mac browser mode, or Linux, you still need [Node.js 20 or newer](https://nodejs.org/en/download).
 

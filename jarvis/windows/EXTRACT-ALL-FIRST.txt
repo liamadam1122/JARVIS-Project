@@ -1,0 +1,15 @@
+WINDOWS — READ THIS
+
+Do NOT double-click files inside the zip window.
+
+1. Right-click JARVIS-gaming-pc.zip
+2. Choose Extract All... / Alles uitpakken...
+3. Open the new folder
+4. Double-click JARVIS.cmd only
+
+If you already double-clicked JARVIS.cmd from inside the zip,
+run it again after Extract All — or let it unpack automatically
+from your Downloads folder.
+
+Je mag JARVIS NIET vanuit het zip-venster openen.
+Rechtsklik op de zip → Alles uitpakken → dan JARVIS.cmd.
