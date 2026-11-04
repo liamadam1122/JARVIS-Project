@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-ui-lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -131,6 +131,13 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px;
     }
     .new-chat:hover, .suggestion:hover, .chat-link:hover { border-color: rgba(158,201,214,.45); background: rgba(158,201,214,.06); }
+    .lang-switch { display: flex; gap: 6px; margin: 0 0 8px; }
+    .lang-btn {
+      flex: 1; border: 1px solid var(--line); background: transparent; color: var(--muted);
+      border-radius: 10px; padding: 8px 0; cursor: pointer; font: 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: .08em;
+    }
+    .lang-btn.is-active, .lang-btn:hover { color: var(--text); border-color: rgba(158,201,214,.55); background: rgba(158,201,214,.08); }
     .chat-label {
       margin: 4px 10px 0; color: var(--muted); font-size: 10px; letter-spacing: .14em;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -300,6 +307,10 @@
         <div class="brand-mark">J</div>
         <div><span class="brand-name">JARVIS</span><span class="brand-sub" id="brandSub">Private · sensors on this Mac</span></div>
       </div>
+      <div class="lang-switch" role="group" aria-label="Language">
+        <button type="button" class="lang-btn is-active" data-lang="en" id="langEn">EN</button>
+        <button type="button" class="lang-btn" data-lang="es" id="langEs">ES</button>
+      </div>
       <button class="new-chat" id="newChat">New conversation</button>
       <div class="chat-label">CONVERSATIONS</div>
       <div class="chat-list" id="chatList" aria-label="Saved conversations"></div>
@@ -460,8 +471,88 @@
     const send = document.getElementById("send");
     const MEMORY_KEY = "jarvis.session.v2";
     const LIBRARY_KEY = "jarvis.chats.v1";
+    const LANG_KEY = "jarvis.ui.lang";
     let conversationHistory = [];
     let threadId = crypto.randomUUID ? crypto.randomUUID() : `thread-${Date.now()}`;
+    let uiLang = localStorage.getItem(LANG_KEY) === "es" ? "es" : "en";
+
+    const UI = {
+      en: {
+        brandSub: "Private · sensors on this Mac",
+        newChat: "New conversation",
+        conversations: "CONVERSATIONS",
+        machine: "Machine",
+        markMoment: "Mark this moment",
+        pay: "Pay the maker",
+        payNote: "The app stays free. PayPal sends the money to the maker and keeps a small fee.",
+        statusDetail: "Chat, memory, and this machine",
+        suggest1: "Summarize this and tell me what matters",
+        suggest2: "Help with a work email or short write-up",
+        suggest3: "My PC gets hot, the fans are not spinning, and it crashes in games",
+        suggest4: "Optimize this PC for gaming",
+        describe: "Describe a problem",
+        findWrong: "Find what's wrong",
+        placeholder: "Message JARVIS",
+        freeOption: "Free option",
+        paidOption: "Paid option",
+        thinking: ["Reading your sensors…", "Thinking…"],
+        readingPulse: "Reading this computer.",
+      },
+      es: {
+        brandSub: "Privado · sensores en este Mac",
+        newChat: "Nueva conversación",
+        conversations: "CONVERSACIONES",
+        machine: "Máquina",
+        markMoment: "Marcar este momento",
+        pay: "Pagar al creador",
+        payNote: "La app sigue gratis. PayPal envía el dinero al creador y se queda una comisión pequeña.",
+        statusDetail: "Chat, memoria y esta máquina",
+        suggest1: "Resume esto y dime qué importa",
+        suggest2: "Ayúdame con un correo o un texto corto de trabajo",
+        suggest3: "El PC se calienta, los ventiladores no giran y se cuelga en juegos",
+        suggest4: "Optimiza este PC para juegos",
+        describe: "Describir un problema",
+        findWrong: "Buscar qué falla",
+        placeholder: "Escribe a JARVIS",
+        freeOption: "Opción gratis",
+        paidOption: "Opción de pago",
+        thinking: ["Leyendo tus sensores…", "Pensando…"],
+        readingPulse: "Leyendo este ordenador.",
+      },
+    };
+
+    function applyUiLanguage(lang) {
+      uiLang = lang === "es" ? "es" : "en";
+      localStorage.setItem(LANG_KEY, uiLang);
+      document.documentElement.lang = uiLang;
+      document.documentElement.dataset.uiLang = uiLang;
+      const t = UI[uiLang];
+      const setText = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+      setText("brandSub", t.brandSub);
+      setText("newChat", t.newChat);
+      const label = document.querySelector(".chat-label");
+      if (label) label.textContent = t.conversations;
+      setText("machineToggle", t.machine);
+      setText("markMoment", t.markMoment);
+      setText("payButton", t.pay);
+      setText("payNote", t.payNote);
+      setText("statusDetail", t.statusDetail);
+      setText("describeProblem", t.describe);
+      const findBtn = document.querySelector("#problemForm button[type='submit']");
+      if (findBtn) findBtn.textContent = t.findWrong;
+      const suggestButtons = document.querySelectorAll("#suggestions .suggestion");
+      const suggestTexts = [t.suggest1, t.suggest2, t.suggest3, t.suggest4];
+      suggestButtons.forEach((button, index) => {
+        if (suggestTexts[index]) button.textContent = suggestTexts[index];
+      });
+      if (input) input.placeholder = t.placeholder;
+      document.getElementById("langEn")?.classList.toggle("is-active", uiLang === "en");
+      document.getElementById("langEs")?.classList.toggle("is-active", uiLang === "es");
+      const pulseNote = document.getElementById("pulseNote");
+      if (pulseNote && /Reading this computer|Leyendo este ordenador/.test(pulseNote.textContent || "")) {
+        pulseNote.textContent = t.readingPulse;
+      }
+    }
 
     function loadLibrary() {
       try {
@@ -1263,7 +1354,7 @@
         const button = document.createElement("button");
         button.type = "button";
         button.className = `plan-btn ${cost}`;
-        button.textContent = cost === "free" ? "Free option" : "Paid option";
+        button.textContent = cost === "free" ? UI[uiLang].freeOption : UI[uiLang].paidOption;
         button.setAttribute("aria-expanded", "false");
         const panel = document.createElement("div");
         panel.className = "plan-panel";
@@ -1387,7 +1478,7 @@
       send.disabled = true;
       chatBusy = true;
       const reply = addMessage("Reading your sensors…", "jarvis");
-      const thinkingLines = ["Reading your sensors…", "Thinking…"];
+      const thinkingLines = UI[uiLang].thinking;
       let thinkingStep = 0;
       document.body.classList.add("is-thinking");
       const thinkingTimer = window.setInterval(() => {
@@ -1401,6 +1492,7 @@
           body: JSON.stringify({
             mode: "chat",
             question: message,
+            language: uiLang,
             threadId,
             moment: momentText,
             problem,
@@ -1460,6 +1552,9 @@
       showThread([]);
       input.focus();
     });
+    document.getElementById("langEn")?.addEventListener("click", () => applyUiLanguage("en"));
+    document.getElementById("langEs")?.addEventListener("click", () => applyUiLanguage("es"));
+    applyUiLanguage(uiLang);
     restoreSession();
     setMachineOpen(false);
     refreshBrain();

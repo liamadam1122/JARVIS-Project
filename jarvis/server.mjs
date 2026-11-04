@@ -803,7 +803,8 @@ const server = createServer(async (req, res) => {
       if (problem?.budget) specs.budget = problem.budget;
       const notes = [problem?.text, problem?.when, problem?.since].filter(Boolean).join("; ");
       if (notes) specs.notes = notes;
-      const result = await advise({ mode: "chat", question, specs, telemetry, history, threadId, moment, problem });
+      const language = body?.language === "es" || body?.language === "en" ? body.language : "";
+      const result = await advise({ mode: "chat", question, specs, telemetry, history, threadId, moment, problem, language });
       if (recordFile) {
         await appendReply(recordFile, {
           question: question.trim(),

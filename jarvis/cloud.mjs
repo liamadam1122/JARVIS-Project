@@ -89,8 +89,8 @@ async function geminiChatWithFallback({ messages, apiKey }) {
   throw error;
 }
 
-export async function cloudChat({ mode, question, specs, telemetry, history, memoryText, secrets, includeMachine = false }) {
-  const messages = buildChatMessages({ mode, question, specs, telemetry, history, memoryText, includeMachine });
+export async function cloudChat({ mode, question, specs, telemetry, history, memoryText, secrets, includeMachine = false, language }) {
+  const messages = buildChatMessages({ mode, question, specs, telemetry, history, memoryText, includeMachine, language });
   const errors = [];
 
   // Gemini first (Google AI credits), then Groq backup.

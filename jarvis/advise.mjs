@@ -1,6 +1,7 @@
 import { smartChat } from "./brain.mjs";
 import { machinePlaybook, polishReply } from "./chat.mjs";
 import { deriveSignals, rankIdeas } from "./ideas.mjs";
+import { detectLanguage } from "./language.mjs";
 import { loadSecrets } from "./secrets.mjs";
 import {
   extractSpecsFromHistory,
@@ -111,7 +112,7 @@ async function searchRelatedIssues(query) {
   }
 }
 
-function localFindings(payload, specs, question) {
+function localFindings(payload, specs, question, lang = "en") {
   const readings = readingMap(payload);
   const cpuTemp = readings.get("temperature.cpu");
   const gpuTemp = readings.get("temperature.gpu");
@@ -120,76 +121,151 @@ function localFindings(payload, specs, question) {
   const ram = readings.get("memory.ram.usage");
   const swap = readings.get("memory.swap.usage");
   const findings = [];
+  const es = lang === "es";
 
   if (usable(gpuTemp) && gpuTemp.value >= 85) {
-    findings.push(`GPU temperature is high (${fmt(gpuTemp)}). Thermal or load pressure until proven otherwise — not a guaranteed hardware failure.`);
+    findings.push(es
+      ? `La temperatura de la GPU está alta (${fmt(gpuTemp)}). Suele ser carga o calor, no un fallo seguro de hardware.`
+      : `GPU temperature is high (${fmt(gpuTemp)}). Thermal or load pressure until proven otherwise — not a guaranteed hardware failure.`);
   } else if (usable(gpuTemp) && gpuTemp.value >= 75) {
-    findings.push(`GPU is warm (${fmt(gpuTemp)}). Check vents, surface, and whether a game or browser is using the GPU.`);
+    findings.push(es
+      ? `La GPU está caliente (${fmt(gpuTemp)}). Revisa rejillas, superficie y si un juego o el navegador están usando la GPU.`
+      : `GPU is warm (${fmt(gpuTemp)}). Check vents, surface, and whether a game or browser is using the GPU.`);
   } else if (!usable(gpuTemp)) {
-    findings.push("GPU temperature isn't available on this machine.");
+    findings.push(es ? "La temperatura de la GPU no está disponible en esta máquina." : "GPU temperature isn't available on this machine.");
   }
 
   if (usable(cpuTemp) && cpuTemp.value >= 95) {
-    findings.push(`CPU temperature is high (${fmt(cpuTemp)}). Reduce load, check airflow, then re-measure the same workload.`);
+    findings.push(es
+      ? `La temperatura de la CPU está alta (${fmt(cpuTemp)}). Baja la carga, revisa el flujo de aire y vuelve a medir con la misma tarea.`
+      : `CPU temperature is high (${fmt(cpuTemp)}). Reduce load, check airflow, then re-measure the same workload.`);
   } else if (!usable(cpuTemp)) {
-    findings.push("CPU temperature isn't available on this machine.");
+    findings.push(es ? "La temperatura de la CPU no está disponible en esta máquina." : "CPU temperature isn't available on this machine.");
   }
 
   if (usable(gpuUse) && gpuUse.value >= 90) {
-    findings.push(`GPU utilization is ${fmt(gpuUse)}. If a game is open, this is expected load, not a broken GPU.`);
+    findings.push(es
+      ? `El uso de la GPU es ${fmt(gpuUse)}. Si hay un juego abierto, es carga normal, no una GPU rota.`
+      : `GPU utilization is ${fmt(gpuUse)}. If a game is open, this is expected load, not a broken GPU.`);
   }
   if (usable(cpuUse) && cpuUse.value >= 90) {
     const heavy = payload?.busyApps?.[0];
     findings.push(heavy
-      ? `CPU utilization is ${fmt(cpuUse)}. The busiest app right now is ${heavy.name}.`
-      : `CPU utilization is ${fmt(cpuUse)}.`);
+      ? (es
+        ? `El uso de la CPU es ${fmt(cpuUse)}. La app más ocupada ahora es ${heavy.name}.`
+        : `CPU utilization is ${fmt(cpuUse)}. The busiest app right now is ${heavy.name}.`)
+      : (es ? `El uso de la CPU es ${fmt(cpuUse)}.` : `CPU utilization is ${fmt(cpuUse)}.`));
   }
   if (usable(ram) && ram.value >= 90) {
-    findings.push(`RAM is ${fmt(ram)}. Closing unused apps is safer than buying RAM until shortage repeats.`);
+    findings.push(es
+      ? `La RAM está al ${fmt(ram)}. Cerrar apps sin usar es más seguro que comprar memoria hasta que se repita.`
+      : `RAM is ${fmt(ram)}. Closing unused apps is safer than buying RAM until shortage repeats.`);
   }
   if (usable(swap) && swap.value >= 20) {
-    findings.push(`Swap is in use (${fmt(swap)}). That can stutter games even when the GPU looks fine.`);
+    findings.push(es
+      ? `Hay swap en uso (${fmt(swap)}). Eso puede hacer tirones en juegos aunque la GPU se vea bien.`
+      : `Swap is in use (${fmt(swap)}). That can stutter games even when the GPU looks fine.`);
   }
 
   const volumes = Array.isArray(payload?.storageVolumes) ? payload.storageVolumes : [];
   const full = volumes.find(volume => typeof volume.usePercent === "number" && volume.usePercent >= 90);
-  if (full) findings.push(`A mounted volume is nearly full (${full.mount}: ${full.usePercent.toFixed(0)}% used). Low disk can look like a GPU problem.`);
+  if (full) {
+    findings.push(es
+      ? `Un volumen montado está casi lleno (${full.mount}: ${full.usePercent.toFixed(0)}% usado). Poco disco puede parecer un problema de GPU.`
+      : `A mounted volume is nearly full (${full.mount}: ${full.usePercent.toFixed(0)}% used). Low disk can look like a GPU problem.`);
+  }
 
   if (!findings.length) {
-    findings.push("No red-line sensor is currently available. Either the machine is within ordinary ranges, or the needed sensors are unsupported.");
+    findings.push(es
+      ? "No hay una alerta clara en los sensores ahora. O la máquina está en rangos normales, o esos sensores no están disponibles."
+      : "No red-line sensor is currently available. Either the machine is within ordinary ranges, or the needed sensors are unsupported.");
   }
 
   const games = clip(specs.games, 120);
   const budget = clip(specs.budget, 40);
-  if (games) findings.push(`Stated games/work: ${games}.`);
-  if (budget) findings.push(`Spend cap: ${budget}.`);
+  if (games) findings.push(es ? `Juegos/trabajo: ${games}.` : `Stated games/work: ${games}.`);
+  if (budget) findings.push(es ? `Presupuesto: ${budget}.` : `Spend cap: ${budget}.`);
   if (clip(question, 160)) findings.push(`Question: ${clip(question, 160)}`);
   return findings;
 }
 
-function heavyLine(payload) {
+function heavyLine(payload, lang = "en") {
   const culprit = (payload?.culprits || []).find(item => item?.app) || null;
-  if (culprit) return `${culprit.app} is using ${culprit.cpuPctOfMachine}% of the machine right now.`;
+  if (culprit) {
+    return lang === "es"
+      ? `${culprit.app} está usando el ${culprit.cpuPctOfMachine}% de la máquina ahora.`
+      : `${culprit.app} is using ${culprit.cpuPctOfMachine}% of the machine right now.`;
+  }
   const heavy = payload?.heavyApps?.[0] || payload?.busyApps?.[0];
   if (!heavy) return "";
-  return `${heavy.name} is using ${heavy.cpu}% CPU right now.`;
+  return lang === "es"
+    ? `${heavy.name} está usando el ${heavy.cpu}% de CPU ahora.`
+    : `${heavy.name} is using ${heavy.cpu}% CPU right now.`;
 }
 
-function diagnoseReply({ payload, specs, question }) {
-  const findings = localFindings(payload, specs, question).filter(item => !item.startsWith("Question:") && !item.startsWith("Stated") && !item.startsWith("Spend"));
+function chattyLocalReply({ payload, question, lang }) {
+  const asked = String(question || "").toLowerCase();
+  const heavy = heavyLine(payload, lang);
+  const device = deviceLine(payload?.device);
+  if (lang === "es") {
+    if (/hola|buenas|hey\b/.test(asked)) {
+      return `Hola. Estoy en ${device}.${heavy ? ` ${heavy}` : ""} Dime qué notas en el Mac o el PC, o pide optimizarlo.`;
+    }
+    if (/gracias|thank/.test(asked)) {
+      return "De nada. Si quieres, mira otra vez las lecturas después de un cambio y te digo si se movieron.";
+    }
+    if (/qui[eé]n eres|what are you|qu[eé] eres/.test(asked)) {
+      return "Soy JARVIS. Leo CPU, memoria y temperatura en este ordenador y respondo aquí. No cambio ajustes por ti.";
+    }
+    return `En ${device}: ${heavy || "no hay una app claramente pesada ahora"}. Pregúntame por calor, lentitud o cómo optimizarlo, o pide ayuda con un texto.`;
+  }
+  if (/hello|hi\b|hey\b/.test(asked)) {
+    return `Hi. I'm on ${device}.${heavy ? ` ${heavy}` : ""} Tell me what feels wrong, or ask to optimize this machine.`;
+  }
+  if (/thank/.test(asked)) {
+    return "You're welcome. After one change, ask again and I can compare the next reading.";
+  }
+  if (/who are you|what are you/.test(asked)) {
+    return "I'm JARVIS. I read CPU, memory, and temperature on this computer and answer here. I do not change settings for you.";
+  }
+  return `On ${device}: ${heavy || "no single app looks heavy right now"}. Ask about heat, slowness, or optimizing, or ask for help with a short write-up.`;
+}
+
+function diagnoseReply({ payload, specs, question, lang }) {
+  const findings = localFindings(payload, specs, question, lang).filter(item => !item.startsWith("Question:") && !item.startsWith("Stated") && !item.startsWith("Spend") && !item.startsWith("Juegos") && !item.startsWith("Presupuesto"));
+  if (!looksLikeProblemSolving(question) && !looksLikeOptimize(question)) {
+    return chattyLocalReply({ payload, question, lang });
+  }
+  if (lang === "es") {
+    return [
+      `En este ${deviceLine(payload?.device)}, ${findings[0] || "las lecturas no señalan un solo fallo."}`,
+      heavyLine(payload, lang),
+      findings.slice(1, 3).join(" "),
+      "No he cambiado nada. Haz un solo paso, marca el momento en la barra lateral y pregunta otra vez para comparar la siguiente lectura.",
+    ].filter(Boolean).join(" ");
+  }
   return [
     `On this ${deviceLine(payload?.device)}, ${findings[0] || "the available readings do not show a single fault."}`,
-    heavyLine(payload),
+    heavyLine(payload, lang),
     findings.slice(1, 3).join(" "),
     "Nothing was changed. Do one thing, mark the moment in the sidebar, then ask again so the next reading can be compared.",
   ].filter(Boolean).join(" ");
 }
 
-function optimizeReply({ payload, specs, question }) {
-  const finding = localFindings(payload, specs, question).find(item => !item.startsWith("Question:") && !item.startsWith("Stated") && !item.startsWith("Spend")) || "The readings that are present are enough to start.";
-  const plan = machinePlaybook(payload?.device);
+function optimizeReply({ payload, specs, question, lang }) {
+  const finding = localFindings(payload, specs, question, lang).find(item => !item.startsWith("Question:") && !item.startsWith("Stated") && !item.startsWith("Spend") && !item.startsWith("Juegos") && !item.startsWith("Presupuesto"))
+    || (lang === "es" ? "Con las lecturas que hay ya se puede empezar." : "The readings that are present are enough to start.");
+  const plan = machinePlaybook(payload?.device, lang);
+  if (lang === "es") {
+    return [
+      `${deviceLine(payload?.device)}. ${finding} ${heavyLine(payload, lang)}`.trim(),
+      plan.free,
+      plan.paid,
+      "El plan gratis es el mejor comienzo. No hace falta gastar dinero. Un sensor que falte no bloquea esto.",
+    ].join(" ");
+  }
   return [
-    `${deviceLine(payload?.device)}. ${finding} ${heavyLine(payload)}`.trim(),
+    `${deviceLine(payload?.device)}. ${finding} ${heavyLine(payload, lang)}`.trim(),
     plan.free,
     plan.paid,
     "The free plan is the better start. You do not need to spend money. A missing sensor does not block this.",
@@ -197,11 +273,11 @@ function optimizeReply({ payload, specs, question }) {
 }
 
 export function looksLikeProblemSolving(text) {
-  return /\b(optim\w*|diagnos\w*|troubleshoot|stutter(?:ing)?|fps|overheat(?:ing)?|thermal|hot\b|fan\b|ram\b|swap\b|crash(?:ing|es)?|lag(?:ging)?|temp(?:erature)?|slow(?:er|ing)?|speed up|boost|tune|fix (?:my )?(?:pc|mac|laptop|computer)|check (?:my )?(?:pc|mac|laptop|computer|sensors?|specs?|stats?|machine)|show (?:my )?(?:specs?|sensors?|stats?|telemetry|machine)|machine (?:readings?|stats?|specs?)|what(?:'s| is) wrong|why is (?:my )?(?:pc|mac|laptop|computer)|performance issue|graphics settings|what should i (buy|change))\b/i.test(text || "");
+  return /\b(optim\w*|diagnos\w*|troubleshoot|stutter(?:ing)?|fps|overheat(?:ing)?|thermal|hot\b|fan\b|ram\b|swap\b|crash(?:ing|es)?|lag(?:ging)?|temp(?:erature)?|slow(?:er|ing)?|speed up|boost|tune|fix (?:my )?(?:pc|mac|laptop|computer)|check (?:my )?(?:pc|mac|laptop|computer|sensors?|specs?|stats?|machine)|show (?:my )?(?:specs?|sensors?|stats?|telemetry|machine)|machine (?:readings?|stats?|specs?)|what(?:'s| is) wrong|why is (?:my )?(?:pc|mac|laptop|computer)|performance issue|graphics settings|what should i (buy|change)|calor|caliente|lento|lent[oa]|r[aá]pido|ventilador|tirones|se\s+cuelga|se\s+apaga|por\s+qu[eé]|qu[eé]\s+pasa|arreglar|problema|rendimiento)\b/i.test(text || "");
 }
 
 function looksLikeOptimize(text) {
-  return /\b(optim\w*|faster|speed up|boost|tune|settings|what should i (buy|change)|budget)\b/i.test(text || "");
+  return /\b(optim\w*|faster|speed up|boost|tune|settings|what should i (buy|change)|budget|m[aá]s\s+r[aá]pido|mejorar|ajustes|configur)\b/i.test(text || "");
 }
 
 function safeDetail(error) {
@@ -209,15 +285,18 @@ function safeDetail(error) {
   return message.replace(/https?:\/\/\S+/g, "").replace(/key=[^\s&]+/gi, "").slice(0, 180);
 }
 
-function renderIdeas(ideas) {
+function renderIdeas(ideas, lang = "en") {
   if (!ideas?.length) return "";
-  return ideas.slice(0, 3).map((item, index) => `${index + 1}. ${item.title}. ${item.cost === "paid" ? "Paid plan." : "Free plan."} ${item.why} ${item.steps[0] || ""}`).join(" ");
+  const paid = lang === "es" ? "Plan de pago." : "Paid plan.";
+  const free = lang === "es" ? "Plan gratis." : "Free plan.";
+  return ideas.slice(0, 3).map((item, index) => `${index + 1}. ${item.title}. ${item.cost === "paid" ? paid : free} ${item.why} ${item.steps[0] || ""}`).join(" ");
 }
 
-export async function advise({ mode, question, specs, telemetry, history, threadId = "default", moment = "", problem = null }) {
+export async function advise({ mode, question, specs, telemetry, history, threadId = "default", moment = "", problem = null, language = "" }) {
   const role = "chat";
   const memory = await loadMemory();
   const includeMachine = true;
+  const lang = detectLanguage(question, language);
   const mergedSpecs = extractSpecsFromHistory(history, question, {
     ...memory.profile,
     ...(specs || {}),
@@ -237,6 +316,7 @@ export async function advise({ mode, question, specs, telemetry, history, thread
       specs: plannedSpecs,
       telemetry,
       history,
+      language: lang,
       memoryText: [memoryContext(memory, question), moment ? `MARKED MOMENT: ${moment}` : "", ideaBlock].filter(Boolean).join("\n"),
       includeMachine,
     });
@@ -246,6 +326,7 @@ export async function advise({ mode, question, specs, telemetry, history, thread
       mode: role,
       reply,
       ideas,
+      language: lang,
       specs: plannedSpecs,
       appliedChanges: false,
       model: llm.model,
@@ -267,15 +348,16 @@ export async function advise({ mode, question, specs, telemetry, history, thread
   const web = secrets.allowWebLookup ? await searchRelatedIssues(query) : { status: "skipped", results: [], detail: "Web lookup is off." };
   const reply = polishReply([
     wantsOptimize
-      ? optimizeReply({ payload: telemetry, specs: plannedSpecs, question, web })
-      : diagnoseReply({ payload: telemetry, specs: plannedSpecs, question, web }),
-    renderIdeas(ideas),
+      ? optimizeReply({ payload: telemetry, specs: plannedSpecs, question, lang })
+      : diagnoseReply({ payload: telemetry, specs: plannedSpecs, question, lang }),
+    wantsPlan ? renderIdeas(ideas, lang) : "",
   ].filter(Boolean).join(" "));
   await rememberInteraction({ mode: role, question, reply, specs: plannedSpecs, threadId });
   return {
     mode: role,
     reply,
-    ideas,
+    ideas: wantsPlan ? ideas : [],
+    language: lang,
     specs: plannedSpecs,
     web,
     appliedChanges: false,

@@ -168,7 +168,7 @@ struct ContentView: View {
             }
 
             HStack(alignment: .bottom, spacing: 10) {
-                TextField("Ask about this Mac", text: $draft, axis: .vertical)
+                TextField("Ask about this Mac / Pregunta por este Mac", text: $draft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(1...4)
                     .padding(12)
@@ -188,6 +188,9 @@ struct ContentView: View {
             Mark(busy: false).frame(width: 34, height: 34)
             Text("What should this Mac do?")
                 .font(.system(size: 32, weight: .regular))
+            Text("¿Qué debería hacer este Mac?")
+                .font(.system(size: 15))
+                .foregroundStyle(Palette.muted)
             Text(machine.summary)
                 .font(.system(size: 15))
                 .foregroundStyle(Palette.muted)
@@ -196,6 +199,8 @@ struct ContentView: View {
                 suggestion("Optimize this Mac")
                 suggestion("Why does it feel warm?")
                 suggestion("What can you read on this Mac?")
+                suggestion("Optimiza este Mac")
+                suggestion("¿Por qué se calienta?")
             }
             .frame(maxWidth: 420)
         }
@@ -455,38 +460,65 @@ final class MachineModel: ObservableObject {
 }
 
 enum Advisor {
+    static func spanish(_ text: String) -> Bool {
+        let asked = text.lowercased()
+        if asked.range(of: #"[áéíóúüñ¿¡]"#, options: .regularExpression) != nil { return true }
+        let keys = ["hola", "gracias", "calor", "caliente", "lento", "rápido", "rapido", "juego", "ventilador", "memoria", "optimiz", "problema", "por qué", "qué pasa", "puedes", "español"]
+        return keys.contains { asked.contains($0) }
+    }
+
     static func reply(to question: String, machine: MachineSnapshot) -> String {
         let asked = question.lowercased()
-        let heat = machine.thermal == "Serious" || machine.thermal == "Critical" || asked.contains("hot") || asked.contains("warm") || asked.contains("fan")
-        let optimize = asked.contains("optim") || asked.contains("faster") || asked.contains("gaming") || asked.contains("tune") || asked.contains("slow")
+        let es = spanish(question)
+        let heat = machine.thermal == "Serious" || machine.thermal == "Critical" || asked.contains("hot") || asked.contains("warm") || asked.contains("fan") || asked.contains("calor") || asked.contains("caliente") || asked.contains("ventilador")
+        let optimize = asked.contains("optim") || asked.contains("faster") || asked.contains("gaming") || asked.contains("tune") || asked.contains("slow") || asked.contains("lento") || asked.contains("rápido") || asked.contains("rapido") || asked.contains("mejorar")
+        let greeting = asked.contains("hola") || asked.contains("hello") || asked.contains("hi ") || asked.hasPrefix("hi")
         let memory = machine.memoryPercent ?? 0
         let heavy = machine.apps.first
         var lines: [String] = []
-        lines.append("\(machine.model), \(String(format: "%.0f", machine.memoryGigabytes)) GiB. Thermal state is \(machine.thermal).")
+        if greeting && !heat && !optimize {
+            if es {
+                return "Hola. Estoy en \(machine.model) con \(String(format: "%.0f", machine.memoryGigabytes)) GiB. El estado térmico es \(machine.thermal). Dime qué notas o pide optimizar este Mac."
+            }
+            return "Hi. I'm on \(machine.model) with \(String(format: "%.0f", machine.memoryGigabytes)) GiB. Thermal state is \(machine.thermal). Tell me what feels wrong, or ask to optimize this Mac."
+        }
+        lines.append(es
+            ? "\(machine.model), \(String(format: "%.0f", machine.memoryGigabytes)) GiB. Estado térmico: \(machine.thermal)."
+            : "\(machine.model), \(String(format: "%.0f", machine.memoryGigabytes)) GiB. Thermal state is \(machine.thermal).")
         if let cpu = machine.cpuPercent {
-            lines.append("CPU is at \(Int(cpu.rounded())) percent.")
+            lines.append(es ? "La CPU está al \(Int(cpu.rounded())) por ciento." : "CPU is at \(Int(cpu.rounded())) percent.")
         } else {
-            lines.append("CPU load is not available yet. Ask again in a few seconds.")
+            lines.append(es ? "La carga de CPU aún no está disponible. Pregunta otra vez en unos segundos." : "CPU load is not available yet. Ask again in a few seconds.")
         }
         if let ram = machine.memoryPercent {
-            lines.append("Memory is at \(Int(ram.rounded())) percent.")
+            lines.append(es ? "La memoria está al \(Int(ram.rounded())) por ciento." : "Memory is at \(Int(ram.rounded())) percent.")
         }
         if let heavy {
-            lines.append("\(heavy) is one of the open apps.")
+            lines.append(es ? "\(heavy) es una de las apps abiertas." : "\(heavy) is one of the open apps.")
         }
-        if asked.contains("what can you read") || asked.contains("what can you see") {
-            lines.append("This App Store build can read CPU load, memory, the Mac model, and the system thermal state. Fan speed and GPU temperature stay unavailable because Apple does not allow those private sensors in a store app.")
+        if asked.contains("what can you read") || asked.contains("what can you see") || asked.contains("qué puedes") || asked.contains("que puedes") {
+            lines.append(es
+                ? "Esta versión de App Store puede leer la carga de CPU, la memoria, el modelo del Mac y el estado térmico del sistema. La velocidad del ventilador y la temperatura de la GPU no están disponibles porque Apple no permite esos sensores privados en una app de la tienda."
+                : "This App Store build can read CPU load, memory, the Mac model, and the system thermal state. Fan speed and GPU temperature stay unavailable because Apple does not allow those private sensors in a store app.")
             return lines.joined(separator: " ")
         }
         if heat {
-            lines.append("The problem is heat. macOS has raised the thermal state, or you can feel the Mac getting warm. Close the heaviest open app, keep the Mac on a hard surface, and leave the vents clear. Then ask again and compare the thermal state.")
+            lines.append(es
+                ? "El problema es el calor. macOS ha subido el estado térmico, o notas el Mac caliente. Cierra la app abierta más pesada, pon el Mac en una superficie dura y deja libres las rejillas. Luego pregunta otra vez y compara el estado térmico."
+                : "The problem is heat. macOS has raised the thermal state, or you can feel the Mac getting warm. Close the heaviest open app, keep the Mac on a hard surface, and leave the vents clear. Then ask again and compare the thermal state.")
         }
         if optimize || heat || memory >= 85 {
-            lines.append("Free plan. Close apps you are not using, lower the game resolution scale, and keep the vents clear. There is no separate graphics card to tune on this Mac.")
-            lines.append("Paid plan. Memory on most MacBooks is soldered, so a RAM purchase is not a step for this machine. A different computer is the only hardware change, and you do not need to spend money.")
-            lines.append("The free plan is the better start.")
+            lines.append(es
+                ? "Plan gratis. Cierra las apps que no uses, baja la escala de resolución del juego y deja libres las rejillas. En este Mac no hay una tarjeta gráfica aparte que se pueda ajustar."
+                : "Free plan. Close apps you are not using, lower the game resolution scale, and keep the vents clear. There is no separate graphics card to tune on this Mac.")
+            lines.append(es
+                ? "Plan de pago. En la mayoría de MacBooks la memoria va soldada, así que comprar RAM no es un paso para esta máquina. El único cambio de hardware sería otro ordenador, y no hace falta gastar dinero."
+                : "Paid plan. Memory on most MacBooks is soldered, so a RAM purchase is not a step for this machine. A different computer is the only hardware change, and you do not need to spend money.")
+            lines.append(es ? "El plan gratis es el mejor comienzo." : "The free plan is the better start.")
         } else if lines.count < 3 {
-            lines.append("Ask what feels wrong, or ask to optimize this Mac. You will get a free plan and a paid plan.")
+            lines.append(es
+                ? "Dime qué falla, o pide optimizar este Mac. Te daré un plan gratis y un plan de pago."
+                : "Ask what feels wrong, or ask to optimize this Mac. You will get a free plan and a paid plan.")
         }
         return lines.joined(separator: " ")
     }

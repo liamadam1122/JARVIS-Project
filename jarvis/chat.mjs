@@ -1,3 +1,5 @@
+import { detectLanguage, machinePlaybookLocalized, replyInLanguageInstruction } from "./language.mjs";
+
 const OLLAMA = "http://127.0.0.1:11434";
 // Prefer smaller models on 8 GB Macs so the UI stays responsive.
 const PREFERRED_MODELS = ["llama3.2:1b", "gemma3:1b", "llama3.2:3b", "qwen2.5:3b", "phi3:mini"];
@@ -34,51 +36,8 @@ function compactReadings(telemetry) {
   ].join("\n");
 }
 
-export function machinePlaybook(device = {}) {
-  const gpu = Array.isArray(device.gpuModels) ? device.gpuModels.join(" ") : "";
-  const id = `${device.manufacturer || ""} ${device.model || ""} ${device.macModel || ""} ${gpu}`.toLowerCase();
-  const discrete = /nvidia|geforce|rtx|gtx|radeon|\brx\s?\d|arc a\d/i.test(gpu);
-  const mac = device.platform === "darwin" || /macbook|imac|mac mini|mac studio/.test(id);
-  const laptop = device.formFactor === "laptop";
-  const plugged = device.acConnected === false ? " It is on battery, so plug it in before judging game performance." : "";
-  if (mac) {
-    return {
-      kind: "mac",
-      guidance: "This is a Mac. Show CPU, GPU, memory, and fan speed when those readings exist. Do not claim a separate graphics card can be tuned, overclocked, or replaced. Most Mac memory is soldered.",
-      free: "Free plan. Close the heaviest app, lower the game resolution scale, and keep the vents clear. There is no separate graphics card to tune on this Mac.",
-      paid: "Paid plan. A memory upgrade is not available on most MacBooks. A different computer is the only hardware change, and you do not need to spend money.",
-    };
-  }
-  if (laptop && !discrete) {
-    const vendor = /lenovo|thinkpad/.test(id)
-      ? "In Lenovo Vantage, set Intelligent Cooling or the balanced performance mode."
-      : "Use the laptop maker's own power or thermal app if it is already installed.";
-    return {
-      kind: "laptop",
-      guidance: `This is a laptop without a separate gaming GPU, including many ThinkPads.${plugged} Help with heat, fans, memory, and startup apps. Do not invent a gaming graphics card and do not suggest overclocking. ${vendor}`,
-      free: `Free plan. ${vendor} Close heavy startup apps and keep the vents clear. This machine does not show a separate gaming GPU, so there is nothing to overclock.${plugged}`,
-      paid: "Paid plan. More memory only if RAM or swap stays high and this laptop has a free slot. You do not need to spend money.",
-    };
-  }
-  if (laptop) {
-    return {
-      kind: "gaming-laptop",
-      guidance: `This is a gaming laptop.${plugged} Stay on the charger. Use the maker's performance mode if that app is already installed: Lenovo Vantage, Legion Toolkit, Armoury Crate, MSI Center, or PredatorSense. In the NVIDIA App or AMD Software, choose the high-performance GPU for the game and cap frames near the laptop screen refresh. Do not suggest a random undervolt tool or an unknown optimizer.`,
-      free: `Free plan. Plug the laptop in. Set the vendor performance mode in Lenovo Vantage, Legion Toolkit, Armoury Crate, MSI Center, or PredatorSense when that app is already installed. In the NVIDIA App or AMD Software, use the official profile and cap frames near the screen refresh. Close the heaviest app, lower shadows before resolution, and keep the vents clear. Do not install an unknown optimizer.${plugged}`,
-      paid: "Paid plan. More memory only if this laptop has a slot and RAM or swap stays high after the free steps. A cooling pad only if the temperature stays high with clear vents. You do not need to spend money.",
-    };
-  }
-  const linux = device.platform === "linux";
-  return {
-    kind: "desktop",
-    guidance: linux
-      ? "This is a desktop PC on Linux. Use the official NVIDIA or AMD settings, or CoreCtrl for AMD. Do not suggest an unknown optimizer."
-      : "This is a desktop gaming PC. In Windows Settings, System, Display, Graphics, set the game to High performance. Use the NVIDIA App or AMD Software for that game, a high-performance power plan while gaming, and a frame cap near the monitor refresh. Do not suggest an unknown optimizer.",
-    free: linux
-      ? "Free plan. Close the heaviest app, lower shadows before resolution, and cap frames near the monitor refresh in the official NVIDIA or AMD settings, or CoreCtrl for AMD. Keep the vents clear. Do not install an unknown optimizer."
-      : "Free plan. In Windows Settings, System, Display, Graphics, set the game to High performance. In the NVIDIA App or AMD Software, use the official profile and cap frames near the monitor refresh. Use a high-performance power plan while gaming. Close the heaviest app, lower shadows before resolution, and keep the vents clear. Do not install an unknown optimizer.",
-    paid: "Paid plan. More memory only if RAM or swap stays high after the free steps. Better cooling only if the temperature stays high with clear vents. A higher-refresh monitor only if the current display is the limit. You do not need to spend money.",
-  };
+export function machinePlaybook(device = {}, lang = "en") {
+  return machinePlaybookLocalized(device, lang);
 }
 
 export function polishReply(text) {
@@ -94,11 +53,13 @@ export function polishReply(text) {
     .trim();
 }
 
-export function systemPrompt(_mode, specs, telemetry, memoryText) {
+export function systemPrompt(_mode, specs, telemetry, memoryText, lang = "en") {
   return [
     "You are JARVIS, a premium private assistant for this laptop or desktop PC. One conversation covers chat, everyday work writing, troubleshooting, and careful optimization.",
+    replyInLanguageInstruction(lang),
     "Voice: calm, precise, smooth. Write plain sentences. No slang unless the user uses it. No hype. No filler.",
     "Never use emojis, asterisks, stars, markdown, headings, or decorative symbols. Do not format with bold or bullets made of stars.",
+    "Do not sound like a fixed script or an automated ticket reply. Answer the latest message directly, in your own words, using the live readings only when they help.",
     "Long messages: one short summary, then the answer. Work writing stays concise. Stop when done.",
     "You can see this computer's live readings and the apps using the most CPU and memory. The same reading path covers laptops and desktop PCs. A laptop is a machine with a battery. A desktop is a machine without one.",
     "Always answer. A missing sensor, fan speed, cooling type, monitor, or game does not stop the reply. Name that one item as unavailable, then continue with everything else you can read. Do not invent the missing number. Do not refuse, stall, or send a questionnaire instead of an answer.",
@@ -110,7 +71,8 @@ export function systemPrompt(_mode, specs, telemetry, memoryText) {
     "If a marked moment is included, say in one sentence whether CPU or memory moved, and whether that is better.",
     "A problem is a fault: heat, fans stopped, crashes, stutter, slowness. Explain what the problem is in plain language, then what can be done about it. Use every reading that is present. One reversible next step. Never claim you changed the machine. Do not turn a fault into a shopping list.",
     "Optimization always gets an answer in the same reply. Free plan first: ordered steps in system settings and only well-known free tools from the PC or laptop maker, NVIDIA, or AMD. Paid plan second: only parts that match the readings you actually have, such as cooling, RAM, or a monitor. Say which plan fits better. Say they do not need to spend money. If cooling, fans, or the monitor were not read, still write both plans and mark only those items unavailable. Never suggest cracks, cheats, undervolt tools from unknown publishers, or unknown optimizer downloads.",
-    machinePlaybook(telemetry?.device).guidance,
+    "Ordinary chat, greetings, and writing help do not need a free plan or a paid plan.",
+    machinePlaybook(telemetry?.device, lang).guidance,
     memoryText || "",
     specs?.games ? `User-stated games/workload: ${specs.games}` : "",
     specs?.budget ? `User-stated budget: ${specs.budget}` : "",
@@ -126,9 +88,10 @@ export function systemPrompt(_mode, specs, telemetry, memoryText) {
   ].filter(Boolean).join("\n");
 }
 
-export function buildChatMessages({ mode, question, specs, telemetry, history, memoryText }) {
+export function buildChatMessages({ mode, question, specs, telemetry, history, memoryText, language }) {
+  const lang = detectLanguage(question, language);
   const messages = [
-    { role: "system", content: systemPrompt(mode, specs, telemetry, memoryText) },
+    { role: "system", content: systemPrompt(mode, specs, telemetry, memoryText, lang) },
   ];
   if (Array.isArray(history)) {
     for (const turn of history.slice(-4)) {
