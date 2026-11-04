@@ -10,17 +10,15 @@ Downloads are on the [latest release](https://github.com/liamadam1122/JARVIS-Pro
 
 Mac: download `JARVIS-mac.zip` or `JARVIS.dmg`. Unzip the zip, or open the disk image. Double-click JARVIS. If it is not in Applications yet, it says to drag JARVIS to Applications. Open it from Applications after that. Node is already inside the app. If macOS says it cannot check the developer, right-click the Applications copy, choose Open, then Open again.
 
-The Windows downloads and a run from this source folder need [Node.js 20 or newer](https://nodejs.org/en/download).
-
 Windows gaming PC: download `JARVIS-gaming-pc.zip`.
 
 Windows gaming laptop: download `JARVIS-gaming-laptop.zip`.
 
 Any other Windows computer: download `JARVIS-windows-computer.zip`.
 
-Those three Windows files are the same app. Pick the name that matches the computer. Unzip it and double-click `start-windows.bat`.
+Those three Windows files are the same app. Pick the name that matches the computer. Unzip it and double-click `start-windows.bat`. Node is already inside the zip. You do not install Node.js separately.
 
-The source in this repository also runs without those downloads.
+The source in this repository also runs without those downloads. From source on Windows, Mac browser mode, or Linux, you still need [Node.js 20 or newer](https://nodejs.org/en/download).
 
 Windows, from this folder: double-click `jarvis/start-windows.bat`.
 
