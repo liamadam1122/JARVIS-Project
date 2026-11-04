@@ -214,8 +214,8 @@ function relevantBite(payload, question, lang = "en") {
     bits.push(`${label} ${Math.round(reading.value)}${reading.unit || ""}`);
   };
   if (/\b(hot|warm|heat|thermal|fans?|calor|caliente|ventiladores?)\b/.test(asked)) {
-    pick("temperature.cpu", "CPU", "CPU");
-    pick("temperature.gpu", "GPU", "GPU");
+    pick("temperature.cpu", "CPU temp", "Temp CPU");
+    pick("temperature.gpu", "GPU temp", "Temp GPU");
     pick("cpu.usage", "CPU load", "Carga CPU");
   } else if (/\b(ram|memory|swap|memoria)\b/.test(asked) || /\b(final\s*cut|premiere|timeline|edit|edici)/.test(asked)) {
     pick("memory.ram.usage", "Memory", "Memoria");
