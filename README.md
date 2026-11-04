@@ -6,11 +6,21 @@ On a Mac, or on a ThinkPad without a separate gaming GPU, it is a readings windo
 
 ## Download
 
-The Mac app is on the [latest release](https://github.com/liamadam1122/JARVIS-Project/releases/latest): download `JARVIS-mac.zip` or `JARVIS.dmg`. Unzip the zip, or open the disk image. Double-click JARVIS. If it is not in Applications yet, it says to drag JARVIS to Applications. Open it from Applications after that. If macOS says it cannot check the developer, right-click the Applications copy, choose Open, then Open again. You need [Node.js 20 or newer](https://nodejs.org/en/download).
+Downloads are on the [latest release](https://github.com/liamadam1122/JARVIS-Project/releases/latest). You need [Node.js 20 or newer](https://nodejs.org/en/download).
 
-The source in this repository also runs without the Mac app.
+Mac: download `JARVIS-mac.zip` or `JARVIS.dmg`. Unzip the zip, or open the disk image. Double-click JARVIS. If it is not in Applications yet, it says to drag JARVIS to Applications. Open it from Applications after that. If macOS says it cannot check the developer, right-click the Applications copy, choose Open, then Open again.
 
-Windows: double-click `jarvis/start-windows.bat`.
+Windows gaming PC: download `JARVIS-gaming-pc.zip`.
+
+Windows gaming laptop: download `JARVIS-gaming-laptop.zip`.
+
+Any other Windows computer: download `JARVIS-windows-computer.zip`.
+
+Those three Windows files are the same app. Pick the name that matches the computer. Unzip it and double-click `start-windows.bat`.
+
+The source in this repository also runs without those downloads.
+
+Windows, from this folder: double-click `jarvis/start-windows.bat`.
 
 Mac, browser version: double-click `jarvis/start-mac.command`. If macOS blocks it, right-click the file, choose Open, then Open again.
 
