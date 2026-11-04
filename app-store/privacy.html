@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JARVIS Data Protection and Privacy</title>
+  <style>
+    :root { color-scheme: light; }
+    body { margin: 0; font: 17px/1.55 Georgia, "Iowan Old Style", Palatino, serif; color: #1c2430; background: #f6f4ef; }
+    main { max-width: 42rem; margin: 0 auto; padding: 3rem 1.25rem 4rem; }
+    h1 { font: 600 2rem/1.2 system-ui, sans-serif; letter-spacing: -0.02em; margin: 0 0 0.4rem; }
+    h2 { font: 600 1.15rem/1.3 system-ui, sans-serif; margin: 2rem 0 0.4rem; }
+    p, li { margin: 0.4rem 0; }
+    .lede { font-size: 1.15rem; }
+    a { color: #0b4f6c; }
+    footer { margin-top: 2.5rem; font: 14px/1.4 system-ui, sans-serif; color: #5c6770; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>JARVIS data protection and privacy</h1>
+  <p class="lede">The Mac App Store version of JARVIS keeps readings and chats on the Mac. The developer does not receive them, does not sell them, and does not use them to track anyone.</p>
+  <p>Effective 4 November 2026. This is the privacy policy for the JARVIS app on the Mac App Store.</p>
+
+  <h2>Who is responsible</h2>
+  <p>The developer and, for European data-protection law, the controller is Liam Adam. Contact: <a href="mailto:liamadam1122@gmail.com">liamadam1122@gmail.com</a>. Support page: <a href="https://liamadam1122.github.io/JARVIS-Project/app-store/support.html">https://liamadam1122.github.io/JARVIS-Project/app-store/support.html</a>.</p>
+  <p>This policy covers the sandboxed Mac App Store app (the bundle id on the product page, currently prepared as com.jarvis.desktop). It does not cover any separate JARVIS download from GitHub.</p>
+
+  <h2>Short version</h2>
+  <ul>
+    <li>No account, no sign-in, and no payment inside the app.</li>
+    <li>This version has no network connection, no analytics, no advertising, and no crash-reporting service.</li>
+    <li>Questions, replies, and Mac readings stay on the Mac.</li>
+    <li>The developer collects no personal data from this app.</li>
+    <li>In App Store Connect the matching privacy answer is Data Not Collected. Tracking is off.</li>
+  </ul>
+
+  <h2>Data that stays on the Mac</h2>
+  <p>JARVIS reads the following with public macOS interfaces so it can show them and use them in a reply. The developer never receives a copy.</p>
+  <ul>
+    <li><strong>Device information on the Mac:</strong> the model identifier, such as Mac14,2, and the amount of installed memory.</li>
+    <li><strong>Performance readings:</strong> CPU load as a percent, sampled about every two seconds; a memory-use estimate as a percent; the thermal state macOS reports (Nominal, Fair, Serious, or Critical).</li>
+    <li><strong>App names:</strong> the display names of up to five ordinary apps that are already open, so a reply can name one of them. Websites, tabs, documents, and file names are not read.</li>
+    <li><strong>Chats:</strong> the questions you type and the replies JARVIS writes. They are saved in the app’s own preferences storage on this Mac (UserDefaults), under a key only this app uses, so the conversation is still there the next time you open JARVIS. Apple’s privacy manifest declares that UserDefaults access for app functionality (reason CA92.1). The manifest declares no tracking and an empty list of collected data types.</li>
+  </ul>
+  <p>Replies are produced on the Mac from those readings and from the words in the question. This version has no cloud model and no personal API key.</p>
+
+  <h2>Data the developer collects</h2>
+  <p>None. This build does not send data to Liam Adam or to any server. The developer does not collect:</p>
+  <ul>
+    <li>name, email address, phone number, postal address, or contacts</li>
+    <li>Apple ID, account identifiers, or precise location</li>
+    <li>photos, files, browsing history, or search history</li>
+    <li>payment or purchase history (the app has no purchases)</li>
+    <li>advertising identifiers or data used to track you across apps and websites</li>
+    <li>health, financial, or sensitive personal data</li>
+    <li>a copy of chats, CPU, memory, thermal state, or open-app names</li>
+  </ul>
+  <p>Email sent to liamadam1122@gmail.com is ordinary email. It is read only to answer that message. It is not collected by the JARVIS app.</p>
+
+  <h2>Why the on-Mac data exists</h2>
+  <p>The readings and chats exist so the app can show the state of this Mac and answer a question about it. That use happens on the device for the person using the Mac. There is no separate purpose such as advertising, profiling, research, or sale.</p>
+
+  <h2>Legal basis</h2>
+  <p>Liam Adam does not process personal data from the Mac App Store app, because the app does not transmit personal data to him. No legal basis for developer-side processing is required for data that never leaves the Mac.</p>
+  <p>Storage of chats in the app’s preferences is done by the app on the user’s Mac so the user can reopen a conversation. The user can delete that storage at any time, as described below.</p>
+
+  <h2>How long it stays</h2>
+  <p>Chats remain on the Mac until you delete them. Click Delete next to a conversation in the sidebar to remove that conversation. Drag JARVIS to the Bin and remove the app to remove the chats it stored. Readings in the window are refreshed about every two seconds and are not uploaded. The developer has no copy to retain and no retention period on a server.</p>
+
+  <h2>Who else can receive it</h2>
+  <p>No one through the app. There are no analytics providers, advertising networks, payment processors, cloud hosts, or other processors for this Mac App Store version. JARVIS does not sell or share personal data.</p>
+
+  <h2>Transfers</h2>
+  <p>There is no transfer of app data to another country, because the app data is not sent off the Mac.</p>
+
+  <h2>Security</h2>
+  <p>The Mac App Store build runs in Apple’s app sandbox. Its only entitlement is the sandbox itself. It does not request the disk, camera, microphone, contacts, calendars, or location. Chats are protected by the Mac login that protects the rest of the files on that Mac. Use a login password and keep macOS updated.</p>
+
+  <h2>Tracking, cookies, and children</h2>
+  <p>The app does not track users, does not use cookies, and does not show ads. It is a general-purpose utility. It is not directed at children under 13, it does not ask anyone for a name or an email, and it has no social features. The developer does not knowingly receive personal data about children from this app.</p>
+
+  <h2>Your rights</h2>
+  <p>If European data-protection law applies to you, the rights of access, correction, deletion, restriction, objection, and portability apply to personal data a controller holds. For this app, the developer holds no chat and no sensor copy. You can see and delete the chats yourself in JARVIS. Email <a href="mailto:liamadam1122@gmail.com">liamadam1122@gmail.com</a> if you have a privacy question.</p>
+  <p>You can also complain to a supervisory authority. In Spain that is the Agencia Española de Protección de Datos, <a href="https://www.aepd.es">https://www.aepd.es</a>. If you live elsewhere in the European Economic Area, you can contact the authority in your country.</p>
+
+  <h2>A different JARVIS download</h2>
+  <p>JARVIS can also be downloaded from GitHub. That download is a different program. It is not the Mac App Store app and it is not described by this page. This page describes only the sandboxed app submitted to the Mac App Store.</p>
+
+  <h2>Changes to this page</h2>
+  <p>If a later version sends data off the Mac, this page will be replaced before that version is submitted, and the App Store privacy labels will be updated to match. The date at the top is the date of this text.</p>
+
+  <h2>Contact</h2>
+  <p>Privacy and data-protection questions: Liam Adam, <a href="mailto:liamadam1122@gmail.com">liamadam1122@gmail.com</a>.</p>
+
+  <footer>
+    <p>JARVIS for Mac · Data protection and privacy · Last updated 4 November 2026 (Europe/Madrid)</p>
+    <p>Privacy Policy URL: https://liamadam1122.github.io/JARVIS-Project/app-store/privacy.html</p>
+    <p><a href="support.html">Support</a></p>
+  </footer>
+</main>
+</body>
+</html>
