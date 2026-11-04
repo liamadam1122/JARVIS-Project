@@ -62,21 +62,27 @@ export async function brainStatus() {
 
 export async function smartChat(args) {
   const target = await sharedBrainTarget();
-  if (target.remote) {
-    return remoteSharedChat(args, target);
-  }
-
   const secrets = await loadSecrets();
-  if (secrets.groqKey || secrets.geminiKey) {
-    return cloudChat({ ...args, secrets });
+  let remoteError = null;
+  if (target.remote) {
+    try {
+      return await remoteSharedChat(args, target);
+    } catch (error) {
+      remoteError = error;
+    }
   }
-
+  if (secrets.groqKey || secrets.geminiKey) {
+    try {
+      return await cloudChat({ ...args, secrets });
+    } catch (error) {
+      remoteError = error;
+    }
+  }
   if (secrets.allowLocal) {
     const local = await localChat(args);
     return { ...local, model: `ollama:${local.model}`, provider: "local" };
   }
-
-  throw new Error(
+  throw remoteError || new Error(
     "JARVIS uses one shared online brain so nobody pastes a personal API key. The product still needs a single Google AI key on the server (not on each computer). Apple iCloud cannot host that server.",
   );
 }

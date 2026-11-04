@@ -1,5 +1,7 @@
 import { smartChat } from "./brain.mjs";
 import { machinePlaybook, polishReply } from "./chat.mjs";
+import { deriveSignals, rankIdeas } from "./ideas.mjs";
+import { loadSecrets } from "./secrets.mjs";
 import {
   extractSpecsFromHistory,
   loadMemory,
@@ -123,14 +125,14 @@ function localFindings(payload, specs, question) {
     findings.push(`GPU temperature is high (${fmt(gpuTemp)}). Thermal or load pressure until proven otherwise — not a guaranteed hardware failure.`);
   } else if (usable(gpuTemp) && gpuTemp.value >= 75) {
     findings.push(`GPU is warm (${fmt(gpuTemp)}). Check vents, surface, and whether a game or browser is using the GPU.`);
-  } else   if (!usable(gpuTemp)) {
-    findings.push("GPU temperature is unavailable. Continue the answer from the other readings.");
+  } else if (!usable(gpuTemp)) {
+    findings.push("GPU temperature isn't available on this machine.");
   }
 
   if (usable(cpuTemp) && cpuTemp.value >= 95) {
     findings.push(`CPU temperature is high (${fmt(cpuTemp)}). Reduce load, check airflow, then re-measure the same workload.`);
   } else if (!usable(cpuTemp)) {
-    findings.push("CPU temperature is unavailable. Continue the answer from the other readings.");
+    findings.push("CPU temperature isn't available on this machine.");
   }
 
   if (usable(gpuUse) && gpuUse.value >= 90) {
@@ -165,10 +167,19 @@ function localFindings(payload, specs, question) {
   return findings;
 }
 
+function heavyLine(payload) {
+  const culprit = (payload?.culprits || []).find(item => item?.app) || null;
+  if (culprit) return `${culprit.app} is using ${culprit.cpuPctOfMachine}% of the machine right now.`;
+  const heavy = payload?.heavyApps?.[0] || payload?.busyApps?.[0];
+  if (!heavy) return "";
+  return `${heavy.name} is using ${heavy.cpu}% CPU right now.`;
+}
+
 function diagnoseReply({ payload, specs, question }) {
   const findings = localFindings(payload, specs, question).filter(item => !item.startsWith("Question:") && !item.startsWith("Stated") && !item.startsWith("Spend"));
   return [
     `On this ${deviceLine(payload?.device)}, ${findings[0] || "the available readings do not show a single fault."}`,
+    heavyLine(payload),
     findings.slice(1, 3).join(" "),
     "Nothing was changed. Do one thing, mark the moment in the sidebar, then ask again so the next reading can be compared.",
   ].filter(Boolean).join(" ");
@@ -178,7 +189,7 @@ function optimizeReply({ payload, specs, question }) {
   const finding = localFindings(payload, specs, question).find(item => !item.startsWith("Question:") && !item.startsWith("Stated") && !item.startsWith("Spend")) || "The readings that are present are enough to start.";
   const plan = machinePlaybook(payload?.device);
   return [
-    `${deviceLine(payload?.device)}. ${finding}`,
+    `${deviceLine(payload?.device)}. ${finding} ${heavyLine(payload)}`.trim(),
     plan.free,
     plan.paid,
     "The free plan is the better start. You do not need to spend money. A missing sensor does not block this.",
@@ -193,7 +204,17 @@ function looksLikeOptimize(text) {
   return /\b(optim\w*|faster|speed up|boost|tune|settings|what should i (buy|change)|budget)\b/i.test(text || "");
 }
 
-export async function advise({ mode, question, specs, telemetry, history, threadId = "default", moment = "" }) {
+function safeDetail(error) {
+  const message = String(error?.message || "The online brain did not answer.");
+  return message.replace(/https?:\/\/\S+/g, "").replace(/key=[^\s&]+/gi, "").slice(0, 180);
+}
+
+function renderIdeas(ideas) {
+  if (!ideas?.length) return "";
+  return ideas.slice(0, 3).map((item, index) => `${index + 1}. ${item.title}. ${item.cost === "paid" ? "Paid plan." : "Free plan."} ${item.why} ${item.steps[0] || ""}`).join(" ");
+}
+
+export async function advise({ mode, question, specs, telemetry, history, threadId = "default", moment = "", problem = null }) {
   const role = "chat";
   const memory = await loadMemory();
   const includeMachine = true;
@@ -201,9 +222,12 @@ export async function advise({ mode, question, specs, telemetry, history, thread
     ...memory.profile,
     ...(specs || {}),
   });
-
-  const wantsOptimize = looksLikeOptimize(question) || mode === "optimize";
+  const wantsOptimize = looksLikeOptimize(question) || mode === "optimize" || Boolean(problem);
   const plannedSpecs = mergeSensedSpecs(mergedSpecs, telemetry);
+  const signals = deriveSignals(telemetry, telemetry?.culprits || [], problem || { text: question });
+  const ideas = rankIdeas(signals, telemetry?.device || {}, problem || { budget: plannedSpecs.budget, text: question });
+  const ideaBlock = ideas.length ? `RANKED IDEAS:\n${ideas.map(item => `${item.title} (${item.cost}): ${item.why}`).join("\n")}` : "";
+  let llmDetail = null;
 
   try {
     const llm = await smartChat({
@@ -212,7 +236,7 @@ export async function advise({ mode, question, specs, telemetry, history, thread
       specs: plannedSpecs,
       telemetry,
       history,
-      memoryText: [memoryContext(memory), moment ? `MARKED MOMENT: ${moment}` : ""].filter(Boolean).join("\n"),
+      memoryText: [memoryContext(memory, question), moment ? `MARKED MOMENT: ${moment}` : "", ideaBlock].filter(Boolean).join("\n"),
       includeMachine,
     });
     const reply = polishReply(llm.reply);
@@ -220,6 +244,7 @@ export async function advise({ mode, question, specs, telemetry, history, thread
     return {
       mode: role,
       reply,
+      ideas,
       specs: plannedSpecs,
       appliedChanges: false,
       model: llm.model,
@@ -228,38 +253,34 @@ export async function advise({ mode, question, specs, telemetry, history, thread
       unlockMachine: includeMachine,
     };
   } catch (error) {
-    if (!includeMachine) {
-      return {
-        mode: role,
-        reply: error.message.includes("shared online brain") || error.message.includes("API key") || error.message.includes("Shared brain")
-          ? error.message
-          : `Shared online brain is not ready. ${error.message}`,
-        specs: {},
-        appliedChanges: false,
-        model: "offline",
-        unlockMachine: false,
-      };
-    }
+    llmDetail = safeDetail(error);
   }
 
+  const secrets = await loadSecrets();
   const device = telemetry?.device || {};
   const gpu = Array.isArray(device.gpuModels) ? device.gpuModels[0] : device.chipName;
   const query = sanitizeQuery([
     gpu || device.cpuBrand || "laptop GPU",
     wantsOptimize ? "game graphics settings" : "graphics overheating",
   ]);
-  const web = await searchRelatedIssues(query);
-  const reply = polishReply(wantsOptimize
-    ? optimizeReply({ payload: telemetry, specs: plannedSpecs, question, web })
-    : diagnoseReply({ payload: telemetry, specs: plannedSpecs, question, web }));
+  const web = secrets.allowWebLookup ? await searchRelatedIssues(query) : { status: "skipped", results: [], detail: "Web lookup is off." };
+  const reply = polishReply([
+    wantsOptimize
+      ? optimizeReply({ payload: telemetry, specs: plannedSpecs, question, web })
+      : diagnoseReply({ payload: telemetry, specs: plannedSpecs, question, web }),
+    renderIdeas(ideas),
+  ].filter(Boolean).join(" "));
   await rememberInteraction({ mode: role, question, reply, specs: plannedSpecs, threadId });
   return {
     mode: role,
     reply,
+    ideas,
     specs: plannedSpecs,
     web,
     appliedChanges: false,
-    model: "local-rules + Wikipedia OpenSearch (optional).",
+    model: "local-rules",
+    provider: "local-rules",
+    detail: llmDetail,
     unlockMachine: true,
   };
 }

@@ -3,11 +3,29 @@ import { randomBytes } from "node:crypto";
 import { lstat, readFile, readdir, realpath } from "node:fs/promises";
 import { homedir, networkInterfaces as osNetworkInterfaces } from "node:os";
 import { isAbsolute, join, relative, sep } from "node:path";
+import { pathToFileURL } from "node:url";
 import si from "systeminformation";
 import { advise, readJsonBody } from "./advise.mjs";
+import { CulpritTracker } from "./culprit.mjs";
 import { brainStatus } from "./brain.mjs";
-import { loadChats, loadMemory, saveChats } from "./memory.mjs";
+import { clearMemory, forgetFact, loadChats, loadMemory, saveChats } from "./memory.mjs";
+import { macHasNoFan } from "./device.mjs";
+import { finishExperiment, loadExperiments, startExperiment } from "./experiments.mjs";
+import { discreteGpuName } from "./providers/common.mjs";
+import { mergePlatformReadings } from "./providers/collect.mjs";
+import { appendReply, appendSample, demoReply, loadDemo, nextDemoPayload } from "./recorder.mjs";
 import { saveSecrets } from "./secrets.mjs";
+
+function cliValue(flag) {
+  const index = process.argv.indexOf(flag);
+  return index > 0 ? String(process.argv[index + 1] || "") : "";
+}
+const isServerMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+const recordFile = isServerMain ? cliValue("--record") : "";
+const demoFile = isServerMain ? cliValue("--demo") : "";
+let demoSession = null;
+let demoIndex = 0;
+const series = [];
 
 const HOST = "127.0.0.1";
 const PORT = 4173;
@@ -66,44 +84,25 @@ function friendlyAppName(proc) {
     .slice(0, 48);
 }
 
-let busyCache = { at: 0, value: { apps: [], heavy: [] } };
+const bootedAt = Date.now();
+let inventoryCache = { at: 0, cpu: null, graphics: null, system: null };
+const culpritTracker = new CulpritTracker();
+let logicalCores = 1;
+let lastCulprit = culpritTracker.snapshot();
 
 async function collectBusyApps() {
-  if (Date.now() - busyCache.at < 20_000) return busyCache.value;
+  culpritTracker.noteClient();
   try {
     const data = await Promise.race([
       si.processes(),
       new Promise(resolve => setTimeout(() => resolve(null), 4000)),
     ]);
     const list = Array.isArray(data?.list) ? data.list : [];
-    const grouped = new Map();
-    for (const proc of list) {
-      if (QUIET_PROCESSES.has(proc?.name)) continue;
-      const name = friendlyAppName(proc);
-      if (!name) continue;
-      const cpu = Number(proc.cpu);
-      const mem = Number(proc.mem);
-      const current = grouped.get(name) || { name, cpu: 0, mem: 0 };
-      if (Number.isFinite(cpu) && cpu > 0) current.cpu += cpu;
-      if (Number.isFinite(mem) && mem > 0) current.mem += mem;
-      grouped.set(name, current);
-    }
-    const apps = [...grouped.values()]
-      .filter(app => app.cpu >= 1 || app.mem >= 1)
-      .sort((a, b) => (b.cpu - a.cpu) || (b.mem - a.mem))
-      .slice(0, 6)
-      .map(app => ({ name: app.name, cpu: Number(app.cpu.toFixed(1)), mem: Number(app.mem.toFixed(1)) }));
-    const leader = apps[0];
-    const next = apps[1];
-    const heavy = apps.filter(app => {
-      if (app.cpu >= 25 || app.mem >= 15) return true;
-      return app === leader && leader.cpu >= 18 && leader.cpu > ((next?.cpu || 0) * 2);
-    }).slice(0, 3);
-    const value = { apps, heavy };
-    busyCache = { at: Date.now(), value };
-    return value;
+    lastCulprit = culpritTracker.ingest(list, logicalCores);
+    return { apps: lastCulprit.busyApps, heavy: lastCulprit.heavyApps };
   } catch {
-    return busyCache.value;
+    lastCulprit = culpritTracker.snapshot();
+    return { apps: lastCulprit.busyApps, heavy: lastCulprit.heavyApps };
   }
 }
 
@@ -165,7 +164,8 @@ function addAppleSiliconReadings(readings, native, sampledAt) {
 
   const fans = Array.isArray(native.fans) ? native.fans : [];
   if (!fans.length) {
-    readings.push(makeReading("fan.rpm", null, "rpm", sensorProvider, sampledAt, "No fan tachometer reading was reported by the sensor provider."));
+    const fanless = macHasNoFan(globalThis.__jarvisModel);
+    readings.push(makeReading("fan.rpm", null, "rpm", sensorProvider, sampledAt, fanless ? "This Mac has no fan." : "No fan tachometer reading was reported by the sensor provider.", fanless ? "unsupported" : "unavailable"));
     return;
   }
   const usedKeys = new Set();
@@ -366,13 +366,38 @@ function addSystemInformationReadings(readings, info, sampledAt) {
   add("memory.swap.usage", validPercent(Number.isFinite(memory.swapused) && memory.swaptotal > 0 ? memory.swapused / memory.swaptotal * 100 : null), "%", "Swap used as a percentage of reported swap capacity.");
 }
 
+function rememberSeries(readings) {
+  const value = metric => {
+    const row = readings.find(item => item.metric === metric && item.status === "available" && Number.isFinite(item.value));
+    return row ? row.value : null;
+  };
+  series.push({
+    t: Date.now(),
+    cpu: value("cpu.usage"),
+    gpu: value("gpu.usage"),
+    temp: value("temperature.cpu") ?? value("temperature.gpu"),
+  });
+  if (series.length > 40) series.shift();
+}
+
+async function replayDemo() {
+  if (!demoSession) demoSession = await loadDemo(demoFile);
+  const payload = nextDemoPayload(demoSession, demoIndex);
+  demoIndex += 1;
+  cachedPayload = payload;
+  cachedAt = Date.now();
+  return payload;
+}
+
 async function collectTelemetry(options = {}) {
   const now = Date.now();
   const maxAge = options.maxAgeMs ?? POLL_CACHE_MS;
   if (cachedPayload && now - cachedAt < maxAge) return cachedPayload;
+  if (demoFile) return replayDemo();
   if (sampleInFlight) return sampleInFlight;
 
   sampleInFlight = (async () => {
+    const sampleStarted = Date.now();
     const sampledAt = new Date().toISOString();
     let native = null;
     let networkRows = [];
@@ -395,12 +420,23 @@ async function collectTelemetry(options = {}) {
     jobs.push(si.currentLoad().then(value => { systemInfo.load = value; }).catch(() => {}));
     jobs.push(si.mem().then(value => { systemInfo.memory = value; }).catch(() => {}));
     jobs.push(si.cpuTemperature().then(value => { systemInfo.temperature = value; }).catch(() => {}));
-    jobs.push(si.cpu().then(value => { systemInfo.cpu = value; }).catch(() => {}));
-    jobs.push(si.graphics().then(value => { systemInfo.graphics = value; }).catch(() => {}));
-    jobs.push(si.system().then(value => { systemInfo.system = value; }).catch(() => {}));
+    if (Date.now() - inventoryCache.at > 10 * 60 * 1000 || !inventoryCache.cpu) {
+      jobs.push(Promise.all([
+        si.cpu().catch(() => null),
+        si.graphics().catch(() => null),
+        si.system().catch(() => null),
+      ]).then(([cpu, graphics, system]) => {
+        inventoryCache = { at: Date.now(), cpu, graphics, system };
+      }));
+    }
     jobs.push(si.battery().then(value => { battery = value; }).catch(() => {}));
     jobs.push(collectBusyApps().then(value => { busy = value; }));
     await Promise.all(jobs);
+    systemInfo.cpu = inventoryCache.cpu;
+    systemInfo.graphics = inventoryCache.graphics;
+    systemInfo.system = inventoryCache.system;
+    if (Number.isFinite(systemInfo.cpu?.cores) && systemInfo.cpu.cores > 0) logicalCores = systemInfo.cpu.cores;
+    globalThis.__jarvisModel = `${systemInfo.system?.model || ""} ${systemInfo.system?.version || ""}`;
 
     const readings = [
       unavailable("voltage.input", "V", "No compatible input voltage meter is connected."),
@@ -476,6 +512,8 @@ async function collectTelemetry(options = {}) {
       }
     }
 
+    await mergePlatformReadings(readings, { sampledAt, modelText: globalThis.__jarvisModel });
+    rememberSeries(readings);
     const availableCount = readings.filter(reading => reading.status === "available").length;
     const controllers = Array.isArray(systemInfo.graphics?.controllers) ? systemInfo.graphics.controllers : [];
     const controllerModels = controllers.map(controller => {
@@ -502,6 +540,7 @@ async function collectTelemetry(options = {}) {
       cpuCores: Number.isFinite(systemInfo.cpu?.physicalCores) ? systemInfo.cpu.physicalCores : systemInfo.cpu?.cores ?? null,
       memoryGb: Number.isFinite(systemInfo.memory?.total) ? systemInfo.memory.total / (1024 ** 3) : sampler?.soc?.memoryGb ?? null,
       gpuModels: controllerModels,
+      discreteGpu: discreteGpuName(controllerModels),
       gpuCores: Number.isFinite(gpuCoreCount) && gpuCoreCount > 0 ? gpuCoreCount : null,
       displays: (Array.isArray(systemInfo.graphics?.displays) ? systemInfo.graphics.displays : []).slice(0, 4).map(display => ({
         model: display.model || display.vendor || null,
@@ -540,7 +579,15 @@ async function collectTelemetry(options = {}) {
       readings,
       busyApps: busy.apps,
       heavyApps: busy.heavy,
+      culprits: lastCulprit.culprits,
+      culpritWindowSec: lastCulprit.culpritWindowSec,
+      gpuAttribution: lastCulprit.gpuAttribution,
+      series: series.slice(),
+      demo: false,
     };
+    if (recordFile) await appendSample(recordFile, payload).catch(error => console.error("Could not record sample.", error?.message || error));
+    const elapsed = Date.now() - sampleStarted;
+    if (elapsed > 500) console.log(`collectTelemetry took ${elapsed} ms`);
     cachedPayload = payload;
     cachedAt = Date.now();
     return payload;
@@ -654,6 +701,14 @@ async function runSpeedTest() {
 }
 
 const server = createServer(async (req, res) => {
+  const url = new URL(req.url || "/", "http://localhost");
+  if (url.pathname === "/api/health" && req.method === "GET") {
+    return send(res, 200, "application/json; charset=utf-8", JSON.stringify({
+      ok: true,
+      uptimeSec: Math.round((Date.now() - bootedAt) / 1000),
+      lastSampleMs: cachedAt ? Date.now() - cachedAt : null,
+    }));
+  }
   if (req.headers.host !== `${HOST}:${PORT}`) return send(res, 403, "text/plain; charset=utf-8", "Local host only.");
   if (req.headers.origin && req.headers.origin !== ORIGIN) return send(res, 403, "text/plain; charset=utf-8", "Same-origin requests only.");
   if (req.url === "/api/storage-scan/stop") {
@@ -716,8 +771,47 @@ const server = createServer(async (req, res) => {
       })).filter(turn => turn.content) : [];
       if (!question.trim()) return send(res, 400, "application/json; charset=utf-8", JSON.stringify({ detail: "Question required." }));
       const moment = typeof body?.moment === "string" ? body.moment.slice(0, 400) : "";
+      if (demoFile) {
+        if (!demoSession) demoSession = await loadDemo(demoFile);
+        const recorded = demoReply(demoSession, question.trim());
+        if (!recorded) {
+          return send(res, 200, "application/json; charset=utf-8", JSON.stringify({
+            reply: "This demo only replays questions that were recorded.",
+            ideas: [],
+            provider: "demo",
+            model: "demo",
+          }));
+        }
+        return send(res, 200, "application/json; charset=utf-8", JSON.stringify({
+          reply: recorded.reply,
+          ideas: recorded.ideas || [],
+          provider: recorded.provider || "demo",
+          model: "demo",
+        }));
+      }
       const telemetry = await collectTelemetry({ maxAgeMs: 12_000 });
-      const result = await advise({ mode: "chat", question, specs: {}, telemetry, history, threadId, moment });
+      const problem = body?.problem && typeof body.problem === "object" ? {
+        symptoms: Array.isArray(body.problem.symptoms) ? body.problem.symptoms.map(item => String(item).slice(0, 40)).slice(0, 8) : [],
+        text: typeof body.problem.text === "string" ? body.problem.text.slice(0, 500) : "",
+        apps: typeof body.problem.apps === "string" ? body.problem.apps.slice(0, 120) : "",
+        when: typeof body.problem.when === "string" ? body.problem.when.slice(0, 40) : "",
+        since: typeof body.problem.since === "string" ? body.problem.since.slice(0, 40) : "",
+        budget: typeof body.problem.budget === "string" ? body.problem.budget.slice(0, 40) : "",
+      } : null;
+      const specs = {};
+      if (problem?.apps) specs.games = problem.apps;
+      if (problem?.budget) specs.budget = problem.budget;
+      const notes = [problem?.text, problem?.when, problem?.since].filter(Boolean).join("; ");
+      if (notes) specs.notes = notes;
+      const result = await advise({ mode: "chat", question, specs, telemetry, history, threadId, moment, problem });
+      if (recordFile) {
+        await appendReply(recordFile, {
+          question: question.trim(),
+          reply: result.reply,
+          ideas: result.ideas || [],
+          provider: result.provider,
+        }).catch(() => {});
+      }
       return send(res, 200, "application/json; charset=utf-8", JSON.stringify(result));
     } catch {
       return send(res, 400, "application/json; charset=utf-8", JSON.stringify({ detail: "Invalid advise request." }));
@@ -771,6 +865,53 @@ const server = createServer(async (req, res) => {
       speedTestInFlight = null;
     }
   }
+  if (url.pathname === "/api/memory" && req.method === "DELETE") {
+    if (req.headers.origin !== ORIGIN) return send(res, 403, "text/plain; charset=utf-8", "Same-origin requests only.");
+    const memory = await clearMemory();
+    return send(res, 200, "application/json; charset=utf-8", JSON.stringify({ profile: memory.profile, facts: [] }));
+  }
+  const factMatch = url.pathname.match(/^\/api\/memory\/facts\/(\d+)$/);
+  if (factMatch && req.method === "DELETE") {
+    if (req.headers.origin !== ORIGIN) return send(res, 403, "text/plain; charset=utf-8", "Same-origin requests only.");
+    const memory = await forgetFact(factMatch[1]);
+    return send(res, 200, "application/json; charset=utf-8", JSON.stringify({ facts: memory.facts || [] }));
+  }
+  if (url.pathname === "/api/experiments" && req.method === "GET") {
+    const store = await loadExperiments();
+    return send(res, 200, "application/json; charset=utf-8", JSON.stringify(store));
+  }
+  if (url.pathname === "/api/experiments" && req.method === "POST") {
+    if (req.headers.origin !== ORIGIN) return send(res, 403, "text/plain; charset=utf-8", "Same-origin requests only.");
+    const body = await readJsonBody(req);
+    const experiment = await startExperiment({
+      ideaId: body?.ideaId,
+      metric: body?.metric,
+      before: typeof body?.before === "number" ? body.before : null,
+    });
+    return send(res, 200, "application/json; charset=utf-8", JSON.stringify(experiment));
+  }
+  const finishMatch = url.pathname.match(/^\/api\/experiments\/([0-9a-f-]{36})\/finish$/);
+  if (finishMatch && req.method === "POST") {
+    if (req.headers.origin !== ORIGIN) return send(res, 403, "text/plain; charset=utf-8", "Same-origin requests only.");
+    const body = await readJsonBody(req);
+    const experiment = await finishExperiment(finishMatch[1], typeof body?.after === "number" ? body.after : null);
+    if (!experiment) return send(res, 404, "application/json; charset=utf-8", JSON.stringify({ detail: "Experiment not found." }));
+    return send(res, 200, "application/json; charset=utf-8", JSON.stringify(experiment));
+  }
+  if (url.pathname === "/api/ideas" && req.method === "POST") {
+    if (req.headers.origin !== ORIGIN) return send(res, 403, "text/plain; charset=utf-8", "Same-origin requests only.");
+    const body = await readJsonBody(req);
+    const telemetry = await collectTelemetry({ maxAgeMs: 12_000 });
+    const result = await advise({
+      mode: "chat",
+      question: typeof body?.problem?.text === "string" ? body.problem.text : "What is using this computer?",
+      specs: {},
+      telemetry,
+      history: [],
+      problem: body?.problem || {},
+    });
+    return send(res, 200, "application/json; charset=utf-8", JSON.stringify({ ideas: result.ideas || [], reply: result.reply }));
+  }
   if (req.method !== "GET") return send(res, 405, "text/plain; charset=utf-8", "Read-only GET endpoint.");
 
   if (req.url === "/" || req.url === "/index.html") {
@@ -795,10 +936,17 @@ const server = createServer(async (req, res) => {
   return send(res, 404, "text/plain; charset=utf-8", "Not found.");
 });
 
-server.listen(PORT, HOST, () => {
-  console.log(`JARVIS local telemetry: ${ORIGIN}`);
-  console.log("Read-only sensors. Diagnose/optimize uses local rules plus optional Wikipedia lookup.");
-});
+export function createJarvisServer() {
+  return server;
+}
+
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) {
+  server.listen(PORT, HOST, () => {
+    console.log(`JARVIS local telemetry: ${ORIGIN}`);
+    console.log("Read-only sensors. Diagnose/optimize uses local rules plus optional Wikipedia lookup.");
+  });
+}
 
 function stop() {
   sampler?.close();

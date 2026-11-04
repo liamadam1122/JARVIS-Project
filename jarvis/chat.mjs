@@ -27,7 +27,9 @@ function compactReadings(telemetry) {
     `machine: ${kind}`,
     `device: ${[device.model || device.macModel, device.chipName, device.cpuBrand, Array.isArray(device.gpuModels) ? device.gpuModels.join(", ") : "", Number.isFinite(device.memoryGb) ? `${device.memoryGb.toFixed(0)} GiB memory` : ""].filter(Boolean).join(" · ") || "unknown"}`,
     rows.join("; ") || "no key readings",
-    busy ? `busiest apps: ${busy}` : "busiest apps: unavailable",
+    Array.isArray(telemetry?.culprits) && telemetry.culprits.length
+      ? `culprits: ${telemetry.culprits.map(item => `${item.app} ${item.cpuCores} cores for ${item.sustainedForSec}s confidence ${item.confidence}`).join("; ")}`
+      : (busy ? `busiest apps: ${busy}` : "busiest apps: unavailable"),
     heavy ? `unusually heavy: ${heavy}` : "unusually heavy: none",
   ].join("\n");
 }
@@ -101,7 +103,8 @@ export function systemPrompt(_mode, specs, telemetry, memoryText) {
     "You can see this computer's live readings and the apps using the most CPU and memory. The same reading path covers laptops and desktop PCs. A laptop is a machine with a battery. A desktop is a machine without one.",
     "Always answer. A missing sensor, fan speed, cooling type, monitor, or game does not stop the reply. Name that one item as unavailable, then continue with everything else you can read. Do not invent the missing number. Do not refuse, stall, or send a questionnaire instead of an answer.",
     "Do not dump a specification list during ordinary chat or writing. Answer the question.",
-    "If unusually heavy is not none, add one calm sentence naming that app. You see apps, not individual browser tab titles. Say the browser or app is using a lot. Do not invent which tab.",
+    "If culprits are present, name the friendly app and its confidence. You see apps, not websites, tabs, or files. For a browser, say one or more tabs or extensions. Do not invent which site.",
+    "If RANKED IDEAS are present, explain the top idea first. Offer a free idea before a paid one. Do not add an idea that is not in that list.",
     "A remembered game is only a name from an earlier message. Never say the user cannot run a game. Do not mention a game unless the user names it in their latest message. An old reply, an example, or a laptop with 8 GiB of memory is not proof a game will not launch.",
     "If PAST CASES are present, use them only when the user is talking about that same problem. Do not drag an old game into a new question.",
     "If a marked moment is included, say in one sentence whether CPU or memory moved, and whether that is better.",

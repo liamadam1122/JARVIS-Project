@@ -73,6 +73,37 @@
     body.is-thinking .orb::after,
     body.is-thinking .avatar.jarvis::after { animation-duration: .85s; }
     @keyframes jarvis-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) {
+      .brand-mark::after, .orb::after, .avatar.jarvis::after { animation: none; }
+      .pulse-track i, .compare-fill { transition: none; }
+    }
+    .ring { width: 28px; height: 28px; }
+    .ring circle { fill: none; stroke-width: 3; }
+    .ring .track { stroke: rgba(255,255,255,.08); }
+    .ring .value { stroke: var(--cyan); stroke-linecap: round; transform: rotate(-90deg); transform-origin: 18px 18px; }
+    .hero { margin: 0 0 16px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; }
+    .hero-kicker { margin: 0; color: var(--cyan); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .hero-title { margin: 6px 0 10px; font-size: 22px; font-weight: 500; }
+    .spark { width: 100%; height: 36px; display: block; }
+    .idea-card { margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; }
+    .pill { display: inline-block; margin-right: 8px; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .pill.free { color: var(--green); border: 1px solid rgba(143,191,168,.5); }
+    .pill.paid { color: #e7c27a; border: 1px solid rgba(231,194,122,.45); }
+    .idea-actions { display: flex; gap: 8px; margin-top: 8px; }
+    .compare { margin-top: 8px; height: 8px; background: rgba(255,255,255,.06); border-radius: 99px; overflow: hidden; }
+    .compare-fill { display: block; height: 100%; width: 0; background: var(--green); }
+    .chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+    .chip[aria-pressed="true"], .chip[aria-checked="true"] { color: var(--text); border-color: rgba(158,201,214,.7); }
+    .demo-pill { display: none; position: fixed; z-index: 30; top: 12px; right: 12px; padding: 6px 10px; border-radius: 99px; background: #3a2a12; color: #f3d7a1; font: 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body[data-demo="1"] .demo-pill { display: block; }
+    body[data-clean="1"] .demo-pill { top: auto; bottom: 12px; }
+    body[data-layout="vertical"] { background: #05080d; }
+    body[data-layout="vertical"] .shell { width: min(420px, 100vw); min-height: 100vh; margin: 0 auto; display: flex; flex-direction: column; }
+    body[data-layout="vertical"] .sidebar { width: 100%; border-right: 0; border-bottom: 1px solid var(--line); }
+    body[data-layout="vertical"] #payButton, body[data-layout="vertical"] #payNote, body[data-layout="vertical"] #operatorBrain { display: none; }
+    body[data-layout="square"] .shell { width: min(100vh, 100vw); height: min(100vh, 100vw); margin: 0 auto; }
+    .metric-source { display: block; color: var(--muted); font-size: 11px; margin-top: 4px; }
+    .group-label { margin: 14px 0 8px; color: #c7d7e9; font-size: 11px; letter-spacing: .12em; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     .brand-name {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-size: 13px; font-weight: 600; letter-spacing: .22em;
@@ -258,9 +289,9 @@
       <div class="chat-list" id="chatList" aria-label="Saved conversations"></div>
       <button class="nav-btn" type="button" id="machineToggle">Machine</button>
       <div class="pulse" id="pulse" aria-label="Live machine pulse">
-        <div class="pulse-line"><span>CPU</span><b id="pulseCpu">—</b></div>
+        <div class="pulse-line"><span>CPU</span><svg class="ring" viewBox="0 0 36 36" aria-hidden="true"><circle class="track" cx="18" cy="18" r="15"></circle><circle id="cpuRing" class="value" cx="18" cy="18" r="15"></circle></svg><b id="pulseCpu">—</b></div>
         <div class="pulse-track"><i id="pulseCpuBar"></i></div>
-        <div class="pulse-line"><span>MEMORY</span><b id="pulseRam">—</b></div>
+        <div class="pulse-line"><span>MEMORY</span><svg class="ring" viewBox="0 0 36 36" aria-hidden="true"><circle class="track" cx="18" cy="18" r="15"></circle><circle id="ramRing" class="value" cx="18" cy="18" r="15"></circle></svg><b id="pulseRam">—</b></div>
         <div class="pulse-track"><i id="pulseRamBar"></i></div>
         <p class="pulse-note" id="pulseNote">Reading this computer.</p>
         <button class="nav-btn" type="button" id="markMoment">Mark this moment</button>
@@ -274,7 +305,7 @@
       <header class="topbar">
         <div class="copy">
           <div class="top-title">JARVIS</div>
-          <p class="tagline">Built for gaming PCs and gaming laptops. On a Mac or a ThinkPad it shows CPU, GPU, memory, and fan speed.</p>
+          <p class="tagline">Built for gaming PCs and laptops. On a Mac it shows CPU, GPU, memory, and heat, plus fan speed when the Mac reports it.</p>
         </div>
         <button class="mobile-machine" type="button" id="machineToggleMobile">Machine</button>
       </header>
@@ -285,6 +316,28 @@
           <p>Chat, everyday work, and this laptop or desktop. Open Machine for live specs. JARVIS can see which app is using the most.</p>
         </div>
         <div class="chat" id="chat" aria-live="polite"></div>
+        <div id="heroCard" class="hero" hidden>
+          <p class="hero-kicker">What's heating it</p>
+          <p class="hero-title" id="heroTitle"></p>
+          <div id="heroSpark"></div>
+        </div>
+        <div id="demoPill" class="demo-pill">Demo replay</div>
+        <button class="suggestion" type="button" id="describeProblem">Describe a problem</button>
+        <form id="problemForm" class="telemetry" hidden>
+          <p class="telemetry-title">Describe the problem</p>
+          <label>What's wrong <input id="problemText" maxlength="240" placeholder="Hot, slow, or crashing"></label>
+          <div id="symptomChips"></div>
+          <label>Which games or apps <input id="problemApps" maxlength="120" list="appSuggestions"></label>
+          <datalist id="appSuggestions"></datalist>
+          <div class="chip-row" id="whenChips" role="radiogroup" aria-label="When"></div>
+          <div class="chip-row" id="sinceChips" role="radiogroup" aria-label="How long"></div>
+          <div class="chip-row" id="budgetChips" role="radiogroup" aria-label="Budget"></div>
+          <input id="problemWhen" type="hidden" value="While gaming">
+          <input id="problemSince" type="hidden" value="This week">
+          <input id="problemBudget" type="hidden" value="€0">
+          <p class="pulse-note">You never need to spend money.</p>
+          <button class="suggestion" type="submit">Find what's wrong</button>
+        </form>
         <div class="suggestions" id="suggestions">
           <button class="suggestion">Summarize this and tell me what matters</button>
           <button class="suggestion">Help with a work email or short write-up</button>
@@ -567,7 +620,45 @@
     let chatBusy = false;
     let momentMark = null;
     try { momentMark = JSON.parse(sessionStorage.getItem("jarvis.moment") || "null"); } catch { momentMark = null; }
-    const readingFreshnessMs = 12000;
+    let readingFreshnessMs = 12000;
+    const pageParams = new URLSearchParams(location.search);
+    if (pageParams.get("layout") === "vertical" || pageParams.get("layout") === "square") document.body.dataset.layout = pageParams.get("layout");
+    if (pageParams.get("clean") === "1") document.body.dataset.clean = "1";
+    function groupForMetric(metric) {
+      if (/^temperature|^fan\.|^thermal/.test(metric || "")) return "Heat";
+      if (/power|voltage/.test(metric || "")) return "Power";
+      if (/usage|frequency|^memory/.test(metric || "")) return "Load";
+      return "Other";
+    }
+    function setRing(id, percent) {
+      const ring = document.getElementById(id);
+      if (!ring) return;
+      const length = 2 * Math.PI * 15;
+      const amount = Math.max(0, Math.min(100, percent || 0)) / 100;
+      ring.style.strokeDasharray = `${length} ${length}`;
+      ring.style.strokeDashoffset = String(length * (1 - amount));
+    }
+    function sparkline(values) {
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", "0 0 120 32");
+      svg.setAttribute("class", "spark");
+      const nums = (values || []).filter(value => Number.isFinite(value));
+      if (nums.length < 2) return svg;
+      const min = Math.min(...nums);
+      const span = Math.max(...nums) - min || 1;
+      const path = document.createElementNS(svg.namespaceURI, "path");
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", "#9ec9d6");
+      path.setAttribute("stroke-width", "1.6");
+      path.setAttribute("d", nums.map((value, index) => {
+        const x = (index / (nums.length - 1)) * 120;
+        const y = 30 - ((value - min) / span) * 26;
+        return `${index ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`;
+      }).join(" "));
+      svg.append(path);
+      return svg;
+    }
+    const symptomChoices = ["Hot", "Loud fans", "Slow", "Stutters/low FPS", "Crashes", "Battery drains"];
     const shell = document.getElementById("shell");
     const machineToggle = document.getElementById("machineToggle");
     const machineToggleMobile = document.getElementById("machineToggleMobile");
@@ -684,8 +775,12 @@
       }
       card.dataset.sampledAt = parsedTime && Number.isFinite(parsedTime.getTime()) ? parsedTime.toISOString() : "";
       card.dataset.status = status;
+      card.dataset.maxAgeMs = String(reading.maxAgeMs || "");
       card.dataset.lastDetail = detail.textContent;
-      card.append(name, value, detail, time);
+      const source = document.createElement("span");
+      source.className = "metric-source";
+      source.textContent = reading.source ? `Where this number comes from: ${reading.source}` : "";
+      card.append(name, value, detail, source, time);
       return card;
     }
 
@@ -778,7 +873,16 @@
       const networkCards = networkReadings.map(createMetricCard);
       const hardwareCards = hardwareReadings.map(createMetricCard);
       telemetryCards = [...hardwareCards, ...defaultCards, ...networkCards];
-      metricGrid.replaceChildren(...hardwareCards);
+      const grouped = document.createDocumentFragment();
+      for (const name of ["Heat", "Load", "Power", "Other"]) {
+        const cards = hardwareCards.filter(card => groupForMetric(card.dataset.metric) === name);
+        if (!cards.length) continue;
+        const label = document.createElement("div");
+        label.className = "group-label";
+        label.textContent = name.toUpperCase();
+        grouped.append(label, ...cards);
+      }
+      metricGrid.replaceChildren(grouped);
       primaryNetworkGrid.replaceChildren(...defaultCards);
       if (!defaultCards.length) {
         const note = document.createElement("div");
@@ -802,9 +906,20 @@
       telemetryDevice.textContent = deviceParts.length ? deviceParts.join(" · ") : "Device details unavailable from the current provider.";
       const apps = Array.isArray(payload.busyApps) ? payload.busyApps : [];
       const heavyNames = new Set((payload.heavyApps || []).map(app => app.name));
-      busyApps.textContent = apps.length
-        ? apps.map(app => `${heavyNames.has(app.name) ? "Heavy · " : ""}${app.name} · CPU ${app.cpu}% · memory ${app.mem}%`).join("\n")
-        : "No busy apps reported.";
+      const culprits = Array.isArray(payload.culprits) ? payload.culprits : [];
+      const suggestions = document.getElementById("appSuggestions");
+      if (suggestions) {
+        suggestions.replaceChildren(...apps.map(app => {
+          const option = document.createElement("option");
+          option.value = app.name;
+          return option;
+        }));
+      }
+      busyApps.textContent = culprits.length
+        ? culprits.map(app => `${app.category} · ${app.app} · ${app.cpuCores} cores · ${app.confidence}`).join("\n")
+        : apps.length
+          ? apps.map(app => `${heavyNames.has(app.name) ? "Heavy · " : ""}${app.name} · CPU ${app.cpu}% · memory ${app.mem}%`).join("\n")
+          : "No busy apps reported.";
       renderStorageVolumes(payload.storageVolumes);
       const availableCount = readings.filter(isUsableReading).length;
       telemetryStatus.textContent = `${availableCount} readings live`;
@@ -824,9 +939,27 @@
       document.getElementById("pulseRam").textContent = ram == null ? "Unavailable" : `${ram.toFixed(0)}%`;
       document.getElementById("pulseCpuBar").style.width = `${Math.max(0, Math.min(100, cpu || 0))}%`;
       document.getElementById("pulseRamBar").style.width = `${Math.max(0, Math.min(100, ram || 0))}%`;
-      document.getElementById("pulseNote").textContent = heavy
-        ? `${heavy.name} is using the most right now.`
-        : "No single app is standing out.";
+      setRing("cpuRing", cpu);
+      setRing("ramRing", ram);
+      document.body.dataset.demo = payload?.demo ? "1" : "";
+      const culprit = (payload?.culprits || []).find(item => item.confidence === "high" || item.confidence === "medium");
+      const hero = document.getElementById("heroCard");
+      const heroTitle = document.getElementById("heroTitle");
+      const heroSpark = document.getElementById("heroSpark");
+      if (hero && heroTitle && heroSpark) {
+        hero.hidden = false;
+        const minutes = culprit ? Math.max(1, Math.round(culprit.sustainedForSec / 60)) : 0;
+        heroTitle.textContent = culprit
+          ? `${culprit.app} · ${culprit.cpuCores} cores · ${minutes} min`
+          : "Nothing is overheating your computer right now.";
+        const series = Array.isArray(payload?.series) ? payload.series.map(point => point.temp ?? point.cpu) : [];
+        heroSpark.replaceChildren(sparkline(series));
+      }
+      document.getElementById("pulseNote").textContent = culprit
+        ? `${culprit.app} · ${culprit.cpuCores} cores for ${Math.max(1, Math.round(culprit.sustainedForSec / 60))} min`
+        : heavy
+          ? `${heavy.name} is using the most right now.`
+          : "No single app is standing out.";
       const saved = momentMark;
       const compare = document.getElementById("momentCompare");
       if (!saved) {
@@ -847,7 +980,8 @@
       telemetryCards.forEach(card => {
         const sampledAt = Date.parse(card.dataset.sampledAt || "");
         if (card.dataset.status !== "available" || !Number.isFinite(sampledAt)) return;
-        if (now - sampledAt <= readingFreshnessMs) return;
+        const maxAge = Number(card.dataset.maxAgeMs) || readingFreshnessMs;
+        if (now - sampledAt <= maxAge) return;
         const valueNode = card.querySelector("[data-value]");
         valueNode.textContent = `Stale · ${valueNode.dataset.lastValue}`;
         valueNode.dataset.state = "stale";
@@ -856,13 +990,17 @@
       });
     }
 
+    let telemetryAbort = null;
     async function refreshTelemetry() {
-      if (chatBusy) return;
+      if (document.hidden) return;
+      telemetryAbort?.abort();
+      telemetryAbort = new AbortController();
       try {
-        const response = await fetch("/api/telemetry", { cache: "no-store" });
+        const response = await fetch("/api/telemetry", { cache: "no-store", signal: telemetryAbort.signal });
         if (!response.ok) throw new Error("Local telemetry request failed.");
         renderTelemetry(await response.json());
-      } catch {
+      } catch (error) {
+        if (error?.name === "AbortError") return;
         telemetryStatus.textContent = "Local telemetry bridge not running";
         markStaleTelemetry();
       }
@@ -1052,6 +1190,90 @@
       await refreshBrain();
     });
 
+    function revealWords(node, text) {
+      const full = String(text || "");
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        node.textContent = full;
+        return;
+      }
+      const words = full.split(/(\s+)/);
+      node.textContent = "";
+      let index = 0;
+      const timer = window.setInterval(() => {
+        node.textContent += words[index] || "";
+        index += 1;
+        if (index >= words.length) window.clearInterval(timer);
+      }, 30);
+    }
+
+    function renderIdeaCard(idea) {
+      const card = document.createElement("article");
+      card.className = "idea-card";
+      const pill = document.createElement("span");
+      pill.className = `pill ${idea.cost === "paid" ? "paid" : "free"}`;
+      pill.textContent = idea.cost === "paid" ? "Paid" : "Free";
+      const title = document.createElement("strong");
+      title.textContent = idea.title || "Step";
+      const why = document.createElement("p");
+      why.className = "pulse-note";
+      why.textContent = idea.why || "";
+      const actions = document.createElement("div");
+      actions.className = "idea-actions";
+      const tryButton = document.createElement("button");
+      tryButton.type = "button";
+      tryButton.className = "suggestion";
+      tryButton.textContent = "Try this";
+      const doneButton = document.createElement("button");
+      doneButton.type = "button";
+      doneButton.className = "suggestion";
+      doneButton.textContent = "I did it — measure";
+      const bar = document.createElement("div");
+      bar.className = "compare";
+      const fill = document.createElement("i");
+      fill.className = "compare-fill";
+      bar.append(fill);
+      const note = document.createElement("p");
+      note.className = "pulse-note";
+      let experimentId = "";
+      const metric = idea.howToVerify?.metric || "cpu.usage";
+      tryButton.addEventListener("click", async () => {
+        const before = readingNumber(latestTelemetry, metric);
+        const response = await fetch("/api/experiments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ideaId: idea.id, metric, before }),
+        });
+        const experiment = await response.json();
+        experimentId = experiment.id;
+        note.textContent = before == null ? "Marked. Do the step, then measure." : `Before: ${before.toFixed(0)}. Do the step, then measure.`;
+      });
+      doneButton.addEventListener("click", async () => {
+        if (!experimentId) {
+          note.textContent = "Press Try this first.";
+          return;
+        }
+        const after = readingNumber(latestTelemetry, metric);
+        const response = await fetch(`/api/experiments/${experimentId}/finish`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ after }),
+        });
+        const experiment = await response.json();
+        const start = Number(experiment.before);
+        const end = Number(experiment.after);
+        if (Number.isFinite(start) && Number.isFinite(end)) {
+          const width = Math.max(8, Math.min(100, end));
+          fill.style.width = `${width}%`;
+          note.textContent = `${metric} ${start.toFixed(0)} to ${end.toFixed(0)}.`;
+        } else {
+          note.textContent = "The reading was not available, so nothing was invented.";
+        }
+      });
+      actions.append(tryButton, doneButton);
+      card.append(pill, title, why, actions, bar, note);
+      return card;
+    }
+
     function addMessage(text, who, meta) {
       const row = document.createElement("div");
       row.className = "message";
@@ -1075,20 +1297,9 @@
       return { bubble, body };
     }
 
-    async function submitMessage(text) {
+    async function submitMessage(text, problem = null) {
       const message = text.trim();
       if (!message || send.disabled) return;
-      if (!cloudReady && !allowLocalToggle.checked) {
-        setMachineOpen(true);
-        operatorBrain.open = true;
-        brainHint.textContent = "Shared brain is not live yet. One product key goes on the server. People using the app do not paste keys.";
-        addMessage(
-          "The shared online brain is not connected yet. This is one server setup for everybody, not a personal API key. Apple iCloud cannot host it.",
-          "jarvis",
-          "shared brain",
-        );
-        return;
-      }
       welcome.hidden = true;
       suggestions.hidden = true;
       if (!momentMark && latestTelemetry) {
@@ -1106,8 +1317,8 @@
       input.value = "";
       send.disabled = true;
       chatBusy = true;
-      const reply = addMessage("Thinking", "jarvis");
-      const thinkingLines = ["Thinking", "Finishing up", "Giving the last touches", "Dotting the i's"];
+      const reply = addMessage("Reading your sensors…", "jarvis");
+      const thinkingLines = ["Reading your sensors…", "Thinking…"];
       let thinkingStep = 0;
       document.body.classList.add("is-thinking");
       const thinkingTimer = window.setInterval(() => {
@@ -1123,14 +1334,23 @@
             question: message,
             threadId,
             moment: momentText,
-            history: conversationHistory.slice(0, -1).slice(-16),
+            problem,
+            history: conversationHistory.slice(0, -1).slice(-8),
           }),
         });
         const result = await response.json();
         if (!response.ok) throw new Error(result.detail || "Advisor unavailable.");
         window.clearInterval(thinkingTimer);
         document.body.classList.remove("is-thinking");
-        reply.body.textContent = result.reply || "No reply.";
+        const providerLabel = result.provider === "local-rules" ? "local rules (offline)" : (result.provider || "JARVIS");
+        revealWords(reply.body, result.reply || "No reply.");
+        const note = document.createElement("span");
+        note.className = "bubble-meta";
+        note.textContent = providerLabel;
+        reply.bubble.append(note);
+        if (Array.isArray(result.ideas)) {
+          for (const idea of result.ideas) reply.bubble.append(renderIdeaCard(idea));
+        }
         conversationHistory.push({ role: "assistant", content: reply.body.textContent });
         saveSession();
         refreshMemory();
@@ -1175,8 +1395,61 @@
     refreshBrain();
     refreshMemory();
     refreshTelemetry();
+    function fillChips(containerId, inputId, choices, pressed) {
+      const box = document.getElementById(containerId);
+      const input = document.getElementById(inputId);
+      if (!box || box.childElementCount) return;
+      for (const name of choices) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "suggestion chip";
+        button.textContent = name;
+        button.setAttribute("role", inputId === "problemText" ? "button" : "radio");
+        button.setAttribute("aria-pressed", pressed === name ? "true" : "false");
+        button.addEventListener("click", () => {
+          if (inputId === "problemText") {
+            button.setAttribute("aria-pressed", button.getAttribute("aria-pressed") === "true" ? "false" : "true");
+            const selected = [...box.querySelectorAll("[aria-pressed='true']")].map(item => item.textContent);
+            input.value = selected.join(", ");
+            return;
+          }
+          for (const sibling of box.querySelectorAll("button")) sibling.setAttribute("aria-pressed", "false");
+          button.setAttribute("aria-pressed", "true");
+          input.value = name;
+        });
+        box.append(button);
+      }
+    }
+    document.getElementById("describeProblem").addEventListener("click", () => {
+      const form = document.getElementById("problemForm");
+      form.hidden = !form.hidden;
+      fillChips("symptomChips", "problemText", ["Hot", "Loud fans", "Slow", "Stutters", "Crashes", "Battery drains"], "");
+      fillChips("whenChips", "problemWhen", ["While gaming", "While browsing", "At startup", "All the time", "After a while"], "While gaming");
+      fillChips("sinceChips", "problemSince", ["Today", "This week", "Weeks", "Months"], "This week");
+      fillChips("budgetChips", "problemBudget", ["€0", "up to €25", "up to €50", "up to €100", "More"], "€0");
+    });
+    document.getElementById("problemForm").addEventListener("submit", event => {
+      event.preventDefault();
+      const allowedBudget = ["€0", "up to €25", "up to €50", "up to €100", "More"];
+      const problem = {
+        symptoms: document.getElementById("problemText").value.split(",").map(item => item.trim()).filter(Boolean).slice(0, 6),
+        text: document.getElementById("problemText").value.trim(),
+        apps: document.getElementById("problemApps").value.trim(),
+        when: document.getElementById("problemWhen").value,
+        since: document.getElementById("problemSince").value,
+        budget: document.getElementById("problemBudget").value,
+      };
+      if (!problem.text || !allowedBudget.includes(problem.budget)) return;
+      const summary = [problem.text, problem.when, problem.since, problem.budget, problem.apps].filter(Boolean).join(" · ");
+      document.getElementById("problemForm").hidden = true;
+      submitMessage(summary, problem);
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) refreshTelemetry();
+    });
     window.setInterval(() => {
-      const intervalMs = shell.classList.contains("machine-open") ? 4000 : 12000;
+      const intervalMs = shell.classList.contains("machine-open") ? 2000 : 4000;
+      readingFreshnessMs = intervalMs * 3;
       if (!refreshTelemetry._nextAt || Date.now() >= refreshTelemetry._nextAt) {
         refreshTelemetry._nextAt = Date.now() + intervalMs;
         refreshTelemetry();

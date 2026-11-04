@@ -6,11 +6,13 @@ On a Mac, or on a ThinkPad without a separate gaming GPU, it is a readings windo
 
 ## Download
 
-This folder is the download. You need [Node.js 20 or newer](https://nodejs.org/en/download).
+The Mac app is on the [latest release](https://github.com/liamadam1122/JARVIS-Project/releases/latest): download `JARVIS-mac.zip` or `JARVIS.dmg`. Unzip the zip, or open the disk image. Double-click JARVIS. If it is not in Applications yet, it says to drag JARVIS to Applications. Open it from Applications after that. If macOS says it cannot check the developer, right-click the Applications copy, choose Open, then Open again. You need [Node.js 20 or newer](https://nodejs.org/en/download).
+
+The source in this repository also runs without the Mac app.
 
 Windows: double-click `jarvis/start-windows.bat`.
 
-Mac: double-click `jarvis/start-mac.command`. If macOS blocks it, right-click the file, choose Open, then Open again.
+Mac, browser version: double-click `jarvis/start-mac.command`. If macOS blocks it, right-click the file, choose Open, then Open again.
 
 Linux: `chmod +x jarvis/start-linux.sh` and run `./jarvis/start-linux.sh`.
 
@@ -20,7 +22,13 @@ The app is free. Pay the maker is in the sidebar. It opens PayPal, the payer cho
 
 ## Mac app
 
-`jarvis/macos/build-mac.sh` builds a local `JARVIS.app` for the Mac you are on. That app is ad-hoc signed. It has no Apple Team ID, it does not include a sandboxed Node server, and the sensor path on Apple silicon uses undocumented interfaces. That combination cannot be submitted to the Mac App Store. The downloadable way to run JARVIS on a Mac is `start-mac.command`.
+`jarvis/macos/build-mac.sh` builds `JARVIS.app`, `jarvis/macos/dist/JARVIS-mac.zip`, and `jarvis/macos/dist/JARVIS.dmg` for the Mac you are on. Opening the zip gives you the app. Opening the disk image shows JARVIS and an Applications folder. Drag JARVIS onto Applications. The first double-click, while the app is still in Downloads, only shows "Drag JARVIS to Applications" and opens those two folders. After it is in Applications, opening it starts JARVIS.
+
+The app is ad-hoc signed. It has no Apple Team ID, so macOS may say it cannot check the developer. Right-click the copy in Applications, choose Open, then Open again. It cannot be submitted to the Mac App Store. `start-mac.command` still opens the browser version.
+
+## How to film an ad
+
+From `jarvis`, `npm run record` saves a real session to `jarvis/data/demo-session.json` with usernames, paths, and hardware addresses removed. `npm run demo` replays that file and shows a Demo replay pill. `?clean=1` only moves the pill. `?layout=vertical` hides the Pay the maker button and the operator key fields. The replay never invents a sensor value that was not recorded.
 
 ## What a gaming PC can actually change
 

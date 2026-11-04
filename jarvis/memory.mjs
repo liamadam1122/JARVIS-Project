@@ -1,8 +1,13 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { writePrivateJson } from "./private-json.mjs";
 
-const MEMORY_PATH = join(dirname(fileURLToPath(import.meta.url)), "data", "memory.json");
+const DEFAULT_MEMORY_PATH = join(dirname(fileURLToPath(import.meta.url)), "data", "memory.json");
+
+function memoryPath() {
+  return process.env.JARVIS_MEMORY_PATH || DEFAULT_MEMORY_PATH;
+}
 
 const emptyMemory = () => ({
   version: 1,
@@ -132,14 +137,14 @@ export function askForSpecs(mode, specs) {
     "Before an optimization plan I need the machine filled in. I will not guess the missing parts.",
     known.length ? `Already read: ${known.join(". ")}.` : "I could not read enough of this computer to skip the questions.",
     missing.length ? `Reply with ${missing.join(", ")}.` : "",
-    "One message is enough. Example: cooling: air; fans: they spin; monitor: 27 inch 1440p 165 Hz; games: Fortnite. Correct anything I already read if it is wrong.",
+    "One message is enough. Example: cooling: air; fans: they spin; monitor: 27 inch 1440p 165 Hz; games: the game you play. Correct anything I already read if it is wrong.",
     "You do not need a budget. I will still show a free plan and a paid plan, and I will say you do not have to spend money.",
   ].filter(Boolean).join(" ");
 }
 
 async function ensureMemory() {
   try {
-    const raw = await readFile(MEMORY_PATH, "utf8");
+    const raw = await readFile(memoryPath(), "utf8");
     const parsed = JSON.parse(raw);
     return {
       ...emptyMemory(),
@@ -153,10 +158,17 @@ async function ensureMemory() {
   }
 }
 
+let writeChain = Promise.resolve();
+
+function withMemoryLock(work) {
+  const run = writeChain.then(work, work);
+  writeChain = run.then(() => {}, () => {});
+  return run;
+}
+
 async function saveMemory(memory) {
-  await mkdir(dirname(MEMORY_PATH), { recursive: true });
   memory.updatedAt = new Date().toISOString();
-  await writeFile(MEMORY_PATH, JSON.stringify(memory, null, 2));
+  await writePrivateJson(memoryPath(), memory);
   return memory;
 }
 
@@ -186,13 +198,19 @@ export async function loadChats() {
 }
 
 export async function saveChats(chats) {
-  const memory = await ensureMemory();
-  memory.chats = (Array.isArray(chats) ? chats : []).map(cleanChat).filter(Boolean).slice(0, 40);
-  await saveMemory(memory);
-  return memory.chats;
+  return withMemoryLock(async () => {
+    const memory = await ensureMemory();
+    memory.chats = (Array.isArray(chats) ? chats : []).map(cleanChat).filter(Boolean).slice(0, 40);
+    await saveMemory(memory);
+    return memory.chats;
+  });
 }
 
 export async function rememberInteraction({ mode, question, reply, specs, threadId = "default" }) {
+  return withMemoryLock(() => rememberUnlocked({ mode, question, reply, specs, threadId }));
+}
+
+async function rememberUnlocked({ mode, question, reply, specs, threadId = "default" }) {
   const memory = await ensureMemory();
   memory.profile = {
     games: clip(specs?.games || memory.profile.games, 200),
@@ -232,12 +250,19 @@ export async function rememberInteraction({ mode, question, reply, specs, thread
   return memory;
 }
 
-export function memoryContext(memory) {
+function mentions(question, text) {
+  const haystack = String(question || "").toLowerCase();
+  const tokens = String(text || "").toLowerCase().split(/[^a-z0-9]+/).filter(token => token.length > 3);
+  return tokens.some(token => haystack.includes(token));
+}
+
+export function memoryContext(memory, question = "") {
   if (!memory) return "";
+  const personal = mentions(question, memory.profile?.games) || mentions(question, memory.profile?.notes);
   const profileBits = [
-    memory.profile?.games ? `games=${memory.profile.games}` : "",
-    memory.profile?.budget ? `budget=${memory.profile.budget}` : "",
-    memory.profile?.notes ? `notes=${memory.profile.notes}` : "",
+    personal && memory.profile?.games ? `games=${memory.profile.games}` : "",
+    personal && memory.profile?.budget ? `budget=${memory.profile.budget}` : "",
+    personal && memory.profile?.notes ? `notes=${memory.profile.notes}` : "",
     memory.profile?.goals ? `goals=${memory.profile.goals}` : "",
     memory.profile?.cpu ? `cpu=${memory.profile.cpu}` : "",
     memory.profile?.ram ? `ram=${memory.profile.ram}` : "",
@@ -246,13 +271,37 @@ export function memoryContext(memory) {
     memory.profile?.fans ? `fans=${memory.profile.fans}` : "",
     memory.profile?.monitor ? `monitor=${memory.profile.monitor}` : "",
   ].filter(Boolean);
-  const facts = (memory.facts || []).slice(-8).join(" | ");
-  const cases = (Array.isArray(memory.cases) ? memory.cases : []).slice(-3).map(item => {
-    return `${item.problem} → ${item.step}`;
-  }).join(" | ");
+  const threadFacts = Array.isArray(memory.threads?.[memory.activeThread])
+    ? memory.threads[memory.activeThread].slice(-4).map(item => item.content).join(" | ")
+    : "";
+  const facts = personal ? (memory.facts || []).slice(-8).join(" | ") : threadFacts;
+  const cases = personal
+    ? (Array.isArray(memory.cases) ? memory.cases : []).slice(-3).map(item => `${item.problem} → ${item.step}`).join(" | ")
+    : "";
   return [
     profileBits.length ? `KNOWN PROFILE: ${profileBits.join("; ")}` : "",
     cases ? `PAST CASES: ${cases}` : "",
     facts ? `RECENT MEMORY: ${facts}` : "",
   ].filter(Boolean).join("\n");
+}
+
+export async function forgetFact(index) {
+  return withMemoryLock(async () => {
+    const memory = await ensureMemory();
+    const facts = Array.isArray(memory.facts) ? memory.facts : [];
+    const at = Number(index);
+    if (!Number.isInteger(at) || at < 0 || at >= facts.length) return memory;
+    facts.splice(at, 1);
+    memory.facts = facts;
+    await saveMemory(memory);
+    return memory;
+  });
+}
+
+export async function clearMemory() {
+  return withMemoryLock(async () => {
+    const fresh = emptyMemory();
+    await saveMemory(fresh);
+    return fresh;
+  });
 }

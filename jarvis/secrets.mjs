@@ -1,6 +1,7 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { writePrivateJson } from "./private-json.mjs";
 
 const DATA_DIR = join(dirname(fileURLToPath(import.meta.url)), "data");
 const SECRETS_PATH = join(DATA_DIR, "secrets.json");
@@ -38,6 +39,9 @@ function mask(key) {
 }
 
 async function readSecretsFile() {
+  if (process.env.JARVIS_TEST_OFFLINE === "1") {
+    return { groqKey: "", geminiKey: "", allowLocal: false, allowWebLookup: false };
+  }
   await loadHostEnv();
   try {
     const parsed = JSON.parse(await readFile(SECRETS_PATH, "utf8"));
@@ -46,12 +50,14 @@ async function readSecretsFile() {
       geminiKey: clipKey(parsed.geminiKey || process.env.GEMINI_API_KEY || process.env.JARVIS_GEMINI_KEY),
       // Default offline: cloud only, so the Mac stays light.
       allowLocal: Boolean(parsed.allowLocal) || process.env.JARVIS_ALLOW_LOCAL === "1",
+      allowWebLookup: Boolean(parsed.allowWebLookup),
     };
   } catch {
     return {
       groqKey: clipKey(process.env.GROQ_API_KEY || process.env.JARVIS_GROQ_KEY),
       geminiKey: clipKey(process.env.GEMINI_API_KEY || process.env.JARVIS_GEMINI_KEY),
       allowLocal: process.env.JARVIS_ALLOW_LOCAL === "1",
+      allowWebLookup: false,
     };
   }
 }
@@ -60,15 +66,15 @@ export async function loadSecrets() {
   return readSecretsFile();
 }
 
-export async function saveSecrets({ groqKey, geminiKey, clearGroq = false, clearGemini = false, allowLocal } = {}) {
+export async function saveSecrets({ groqKey, geminiKey, clearGroq = false, clearGemini = false, allowLocal, allowWebLookup } = {}) {
   const current = await readSecretsFile();
   const next = {
     groqKey: clearGroq ? "" : (groqKey !== undefined ? clipKey(groqKey) : current.groqKey),
     geminiKey: clearGemini ? "" : (geminiKey !== undefined ? clipKey(geminiKey) : current.geminiKey),
     allowLocal: allowLocal !== undefined ? Boolean(allowLocal) : Boolean(current.allowLocal),
+    allowWebLookup: allowWebLookup !== undefined ? Boolean(allowWebLookup) : Boolean(current.allowWebLookup),
   };
-  await mkdir(dirname(SECRETS_PATH), { recursive: true });
-  await writeFile(SECRETS_PATH, JSON.stringify(next, null, 2));
+  await writePrivateJson(SECRETS_PATH, next);
   return next;
 }
 
@@ -80,6 +86,7 @@ export async function publicBrainConfig() {
     groqMasked: mask(secrets.groqKey),
     geminiMasked: mask(secrets.geminiKey),
     allowLocal: Boolean(secrets.allowLocal),
+    allowWebLookup: Boolean(secrets.allowWebLookup),
     cloudFirst: true,
   };
 }

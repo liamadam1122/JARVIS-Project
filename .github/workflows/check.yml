@@ -19,7 +19,7 @@ jobs:
         run: npm install
       - name: Syntax
         working-directory: jarvis
-        run: node --check server.mjs && node --check advise.mjs && node --check chat.mjs && node --check memory.mjs && node --check cloud.mjs && node --check brain.mjs && node --check secrets.mjs && node --check shared-brain.mjs && node --check brain-host.mjs
+        run: node --check server.mjs && node --check advise.mjs && node --check chat.mjs && node --check memory.mjs && node --check cloud.mjs && node --check brain.mjs && node --check secrets.mjs && node --check shared-brain.mjs && node --check brain-host.mjs && node --check culprit.mjs && node --check ideas.mjs && node --check device.mjs && node --check experiments.mjs && node --check recorder.mjs && node --check providers/common.mjs && node --check providers/mac.mjs && node --check providers/windows.mjs && node --check providers/linux.mjs && node --check providers/collect.mjs
       - name: Page responds
         working-directory: jarvis
         shell: bash
@@ -36,3 +36,6 @@ jobs:
           done
           cat /tmp/jarvis-server.log
           exit 1
+      - name: Tests
+        working-directory: jarvis
+        run: node --test

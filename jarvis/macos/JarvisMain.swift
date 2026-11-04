@@ -7,6 +7,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let page = URL(string: "http://127.0.0.1:4173")!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if !Self.isInApplications(Bundle.main.bundlePath) {
+            showMoveWindow()
+            return
+        }
         let webView = WKWebView(frame: .zero)
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1100, height: 760),
@@ -31,6 +35,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    static func isInApplications(_ path: String) -> Bool {
+        let homeApps = (NSHomeDirectory() as NSString).appendingPathComponent("Applications")
+        return path.hasPrefix("/Applications/") || path.hasPrefix(homeApps + "/")
+    }
+
+    func showMoveWindow() {
+        window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 300),
+            styleMask: [.titled, .closable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "JARVIS"
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 560, height: 300))
+        let title = NSTextField(labelWithString: "Drag JARVIS to Applications")
+        title.font = .systemFont(ofSize: 22, weight: .semibold)
+        title.frame = NSRect(x: 32, y: 210, width: 500, height: 32)
+        let body = NSTextField(wrappingLabelWithString: "JARVIS stays closed until the app is in the Applications folder. Drag the JARVIS icon onto Applications, then open it from there.")
+        body.frame = NSRect(x: 32, y: 120, width: 490, height: 72)
+        let button = NSButton(title: "Show in Finder", target: self, action: #selector(revealInstall))
+        button.bezelStyle = .rounded
+        button.frame = NSRect(x: 32, y: 48, width: 160, height: 32)
+        content.addSubview(title)
+        content.addSubview(body)
+        content.addSubview(button)
+        window.contentView = content
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        revealInstall()
+    }
+
+    @objc func revealInstall() {
+        NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
+        NSWorkspace.shared.open(URL(fileURLWithPath: "/Applications", isDirectory: true))
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -49,13 +90,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func startServer() -> Bool {
         let fileManager = FileManager.default
         guard let exe = Bundle.main.executableURL else { return false }
-        let serverFile = exe
+        let bundled = Bundle.main.resourceURL?.appendingPathComponent("server/server.mjs")
+        let besideApp = exe
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .appendingPathComponent("server.mjs")
-        guard fileManager.fileExists(atPath: serverFile.path) else { return false }
+        let serverFile = [bundled, besideApp].compactMap { $0 }.first { fileManager.fileExists(atPath: $0.path) }
+        guard let serverFile else { return false }
         let node = ["/opt/homebrew/bin/node", "/usr/local/bin/node"].first { fileManager.isExecutableFile(atPath: $0) }
         guard let node else { return false }
         let proc = Process()

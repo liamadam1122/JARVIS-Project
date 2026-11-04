@@ -41,11 +41,11 @@ async function geminiChat({ messages, apiKey, model }) {
       role: item.role === "assistant" ? "model" : "user",
       parts: [{ text: item.content }],
     }));
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
   const generationConfig = { temperature: 0.3, maxOutputTokens: 700 };
   const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
     signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
@@ -81,7 +81,12 @@ async function geminiChatWithFallback({ messages, apiKey }) {
       errors.push(`${model}: ${error.message}`);
     }
   }
-  throw new Error(errors.join(" | ") || "Gemini failed.");
+  const busy = errors.length && errors.every(item => /\b(429|500|502|503|504)\b/.test(item));
+  const error = new Error(busy
+    ? "The online brain is busy. JARVIS will answer from the readings on this computer."
+    : "The online brain did not answer. JARVIS will answer from the readings on this computer.");
+  error.status = busy ? 503 : 502;
+  throw error;
 }
 
 export async function cloudChat({ mode, question, specs, telemetry, history, memoryText, secrets, includeMachine = false }) {
