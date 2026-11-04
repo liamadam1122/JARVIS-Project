@@ -1,8 +1,8 @@
 @echo off
 setlocal EnableExtensions
-title Open JARVIS
+title JARVIS
 echo.
-echo  This helper unpacks JARVIS from your Downloads folder and starts it.
+echo  JARVIS uitpakken en starten...
 echo.
 
 set "DEST=%LOCALAPPDATA%\JARVIS\gaming-pc"
@@ -14,38 +14,41 @@ if not defined ZIP call :FIND_ZIP "%USERPROFILE%\OneDrive\Downloads"
 if not defined ZIP call :FIND_ZIP "%~dp0"
 
 if not defined ZIP (
-  echo  Could not find JARVIS-gaming-pc.zip in Downloads.
-  echo  Download it from the GitHub release, then run this file again.
+  echo  Kon JARVIS-gaming-pc.zip niet vinden in Downloads.
+  echo  Download die eerst, laat hem in Downloads staan, en start dit bestand opnieuw.
   echo.
   pause
   exit /b 1
 )
 
-echo  Found: %ZIP%
-echo  Unpacking to: %DEST%
+echo  Gevonden: %ZIP%
+echo  Uitpakken naar: %DEST%
 echo.
 if exist "%DEST%" rmdir /s /q "%DEST%" 2>nul
 mkdir "%DEST%" 2>nul
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -LiteralPath '%ZIP%' -DestinationPath '%DEST%' -Force"
 if errorlevel 1 (
-  echo  Unpack failed.
+  echo  Uitpakken mislukt.
   pause
   exit /b 1
 )
 
-set "LAUNCH="
-if exist "%DEST%\JARVIS.cmd" set "LAUNCH=%DEST%\JARVIS.cmd"
-for /d %%D in ("%DEST%\*") do if exist "%%~D\JARVIS.cmd" set "LAUNCH=%%~D\JARVIS.cmd"
-
-if not defined LAUNCH (
-  echo  Unpack finished but JARVIS.cmd was not found.
-  pause
-  exit /b 1
+if exist "%DEST%\JARVIS.exe" (
+  start "" "%DEST%\JARVIS.exe"
+  exit /b 0
+)
+for /d %%D in ("%DEST%\*") do if exist "%%~D\JARVIS.exe" (
+  start "" "%%~D\JARVIS.exe"
+  exit /b 0
+)
+if exist "%DEST%\START-JARVIS.cmd" (
+  call "%DEST%\START-JARVIS.cmd"
+  exit /b %ERRORLEVEL%
 )
 
-echo  Starting...
-call "%LAUNCH%"
-exit /b %ERRORLEVEL%
+echo  Uitpakken klaar, maar JARVIS.exe ontbreekt.
+pause
+exit /b 1
 
 :FIND_ZIP
 set "DIR=%~1"

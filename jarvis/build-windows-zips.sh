@@ -8,6 +8,13 @@ DIST="$ROOT/macos/dist"
 mkdir -p "$CACHE" "$DIST"
 WIN_DIR="$CACHE/node-${NODE_VERSION}-win-x64"
 WIN_ZIP="$CACHE/node-${NODE_VERSION}-win-x64.zip"
+EXE="$ROOT/windows/JARVIS.exe"
+
+if [ ! -f "$EXE" ]; then
+  echo "Missing $EXE — build the native launcher first." >&2
+  exit 1
+fi
+
 if [ ! -f "$WIN_DIR/node.exe" ]; then
   if [ ! -f "$WIN_ZIP" ]; then
     curl -fL "https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-win-x64.zip" -o "$WIN_ZIP"
@@ -22,9 +29,10 @@ fi
 pack_one() {
   name="$1"
   stage="$(mktemp -d)"
-  root="$stage/$name"
+  # Flat zip root so Extract All does not create a useless nested folder.
+  root="$stage"
   app="$root/app"
-  mkdir -p "$app/runtime" "$root"
+  mkdir -p "$app/runtime"
   rsync -a \
     --exclude macos \
     --exclude test \
@@ -46,20 +54,16 @@ pack_one() {
     --exclude 'assets/jarvis-orb-1024.png' \
     "$ROOT/" "$app/"
   cp "$WIN_DIR/node.exe" "$app/runtime/node.exe"
-  # Only clear launch files at the root — nothing confusing to open.
-  cp "$ROOT/windows/JARVIS.cmd" "$root/JARVIS.cmd"
-  cp "$ROOT/windows/EXTRACT-ALL-FIRST.txt" "$root/EXTRACT-ALL-FIRST.txt"
-  cat > "$root/Double-click-JARVIS-cmd.txt" <<EOF
-After Extract All, double-click JARVIS.cmd
+  cp "$EXE" "$root/JARVIS.exe"
+  cp "$ROOT/windows/LEES-MIJ.txt" "$root/LEES-MIJ.txt"
+  # Backup launcher if exe is blocked by SmartScreen
+  cp "$ROOT/windows/JARVIS.cmd" "$root/START-JARVIS.cmd"
 
-Do not open files from inside the zip window.
-Right-click the zip → Extract All / Alles uitpakken.
-EOF
   out="$DIST/${name}.zip"
   rm -f "$out"
   (
     cd "$stage"
-    zip -qr "$out" "$name"
+    zip -qr "$out" JARVIS.exe LEES-MIJ.txt START-JARVIS.cmd app
   )
   rm -rf "$stage"
   ls -lh "$out"
@@ -68,4 +72,4 @@ EOF
 pack_one JARVIS-gaming-pc
 pack_one JARVIS-gaming-laptop
 pack_one JARVIS-windows-computer
-echo "Built Windows zips with auto-extract launcher in macos/dist/."
+echo "Built flat Windows zips with JARVIS.exe in macos/dist/."

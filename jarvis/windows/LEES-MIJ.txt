@@ -1,0 +1,13 @@
+WINDOWS / NEDERLANDS
+====================
+
+1. Rechtermuisklik op dit zip-bestand in Downloads
+2. Kies: Alles uitpakken...
+3. Druk op Uitpakken
+4. Open de map die verschijnt
+5. Dubbelklik op JARVIS.exe
+
+Klaar. Je browser opent JARVIS.
+
+Open GEEN bestanden vanuit het zip-venster van Chrome.
+Alleen JARVIS.exe starten. De map "app" niet openen.
