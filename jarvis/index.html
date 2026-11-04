@@ -264,8 +264,21 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 15px;
     }
     textarea::placeholder { color:#71839a; }
-    .composer-footer { display:flex; align-items:center; justify-content:space-between; padding:4px 2px 0 7px; }
-    .hint { color:#71839a; font-size:11px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .composer-footer { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:4px 2px 0 7px; }
+    .hint { color:#71839a; font-size:11px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; flex: 1; min-width: 0; }
+    .composer-actions { display:flex; align-items:center; gap:8px; flex-shrink: 0; }
+    .voice-btn {
+      border: 1px solid var(--line); border-radius: 8px; color: var(--cyan); background: transparent;
+      width: 36px; height: 36px; padding: 0; cursor: pointer; display: grid; place-items: center;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .voice-btn:hover { border-color: rgba(158,201,214,.55); background: rgba(158,201,214,.06); }
+    .voice-btn.is-listening {
+      color: #07121c; background: var(--cyan); border-color: var(--cyan);
+      box-shadow: 0 0 0 3px rgba(158,201,214,.18);
+    }
+    .voice-btn:disabled { opacity: .45; cursor: not-allowed; }
+    .voice-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
     .send {
       border:0; border-radius:8px; color:#07121c; background: var(--cyan);
       padding:9px 16px; cursor:pointer; font-weight:600; font-size:12px; letter-spacing: 0.04em;
@@ -375,7 +388,15 @@
         <div class="composer-wrap">
           <form class="composer" id="form">
             <textarea id="input" rows="2" aria-label="Message JARVIS" placeholder="Message JARVIS"></textarea>
-            <div class="composer-footer"><span class="hint">Return to send · Shift + Return for a new line</span><button class="send" id="send" type="submit">Send</button></div>
+            <div class="composer-footer">
+              <span class="hint" id="composerHint">Return to send · Shift + Return for a new line · Mic to dictate</span>
+              <div class="composer-actions">
+                <button class="voice-btn" id="voiceBtn" type="button" aria-pressed="false" aria-label="Dictate with microphone" title="Dictate">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z"/><path d="M19 11a7 7 0 0 1-14 0"/><path d="M12 18v3"/></svg>
+                </button>
+                <button class="send" id="send" type="submit">Send</button>
+              </div>
+            </div>
           </form>
           <div class="note" id="footerNote">Mark a moment in the sidebar, then watch what changed.</div>
         </div>
@@ -466,6 +487,14 @@
   <script>
     const form = document.getElementById("form");
     const input = document.getElementById("input");
+    const voiceBtn = document.getElementById("voiceBtn");
+    const composerHint = document.getElementById("composerHint");
+    const voiceState = {
+      listening: false,
+      recognition: null,
+      baseText: "",
+      finalText: "",
+    };
     const chat = document.getElementById("chat");
     const welcome = document.getElementById("welcome");
     const suggestions = document.getElementById("suggestions");
@@ -494,6 +523,13 @@
         describe: "Describe a problem",
         findWrong: "Find what's wrong",
         placeholder: "Message JARVIS",
+        hint: "Return to send · Shift + Return for a new line · Mic to dictate",
+        voiceStart: "Dictate",
+        voiceListening: "Listening… tap mic when done",
+        voiceReady: "Draft ready — edit it, then Send",
+        voiceUnsupported: "Voice typing needs Chrome, Edge, or Safari with mic permission.",
+        voiceDenied: "Microphone blocked. Allow mic access for this page, then try again.",
+        voiceError: "Could not hear that. Tap the mic and try again.",
         freeOption: "Free option",
         paidOption: "Paid option",
         thinking: ["Reading your sensors…", "Thinking…"],
@@ -515,6 +551,13 @@
         describe: "Describir un problema",
         findWrong: "Buscar qué falla",
         placeholder: "Escribe a JARVIS",
+        hint: "Return para enviar · Shift + Return para línea nueva · Mic para dictar",
+        voiceStart: "Dictar",
+        voiceListening: "Escuchando… toca el mic cuando termines",
+        voiceReady: "Borrador listo — edítalo y pulsa Enviar",
+        voiceUnsupported: "El dictado necesita Chrome, Edge o Safari con permiso de micrófono.",
+        voiceDenied: "Micrófono bloqueado. Permite el micrófono en esta página e inténtalo otra vez.",
+        voiceError: "No se escuchó bien. Toca el mic e inténtalo otra vez.",
         freeOption: "Opción gratis",
         paidOption: "Opción de pago",
         thinking: ["Leyendo tus sensores…", "Pensando…"],
@@ -547,11 +590,21 @@
         if (suggestTexts[index]) button.textContent = suggestTexts[index];
       });
       if (input) input.placeholder = t.placeholder;
+      const hint = document.getElementById("composerHint");
+      if (hint && !voiceState.listening) hint.textContent = t.hint;
+      const voiceBtn = document.getElementById("voiceBtn");
+      if (voiceBtn && !voiceState.listening) {
+        voiceBtn.title = t.voiceStart;
+        voiceBtn.setAttribute("aria-label", t.voiceStart);
+      }
       document.getElementById("langEn")?.classList.toggle("is-active", uiLang === "en");
       document.getElementById("langEs")?.classList.toggle("is-active", uiLang === "es");
       const pulseNote = document.getElementById("pulseNote");
       if (pulseNote && /Reading this computer|Leyendo este ordenador/.test(pulseNote.textContent || "")) {
         pulseNote.textContent = t.readingPulse;
+      }
+      if (voiceState.recognition) {
+        voiceState.recognition.lang = uiLang === "es" ? "es-ES" : "en-US";
       }
     }
 
@@ -1538,8 +1591,122 @@
       }
     }
 
+    function voiceCopy() {
+      return UI[uiLang] || UI.en;
+    }
+
+    function setVoiceHint(text) {
+      if (composerHint) composerHint.textContent = text;
+    }
+
+    function stopVoice(opts = {}) {
+      const keepDraft = opts.keepDraft !== false;
+      if (voiceState.recognition && voiceState.listening) {
+        try { voiceState.recognition.stop(); } catch (_) {}
+      }
+      voiceState.listening = false;
+      if (voiceBtn) {
+        voiceBtn.classList.remove("is-listening");
+        voiceBtn.setAttribute("aria-pressed", "false");
+        voiceBtn.title = voiceCopy().voiceStart;
+        voiceBtn.setAttribute("aria-label", voiceCopy().voiceStart);
+      }
+      if (keepDraft && (voiceState.finalText || input.value.trim())) {
+        setVoiceHint(voiceCopy().voiceReady);
+      } else if (!voiceState.listening) {
+        setVoiceHint(voiceCopy().hint);
+      }
+    }
+
+    function applyVoiceDraft(interim) {
+      const spoken = [voiceState.finalText, interim].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+      const base = voiceState.baseText.trim();
+      input.value = base && spoken ? `${base}${/[\s\n]$/.test(base) ? "" : " "}${spoken}` : (spoken || base);
+      input.dispatchEvent(new Event("input"));
+    }
+
+    function ensureVoiceRecognition() {
+      if (voiceState.recognition) return voiceState.recognition;
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) return null;
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+      recognition.lang = uiLang === "es" ? "es-ES" : "en-US";
+      recognition.onstart = () => {
+        voiceState.listening = true;
+        if (voiceBtn) {
+          voiceBtn.classList.add("is-listening");
+          voiceBtn.setAttribute("aria-pressed", "true");
+          voiceBtn.title = voiceCopy().voiceListening;
+          voiceBtn.setAttribute("aria-label", voiceCopy().voiceListening);
+        }
+        setVoiceHint(voiceCopy().voiceListening);
+      };
+      recognition.onresult = event => {
+        let interim = "";
+        let finals = voiceState.finalText;
+        for (let i = event.resultIndex; i < event.results.length; i += 1) {
+          const piece = event.results[i][0]?.transcript || "";
+          if (event.results[i].isFinal) finals = `${finals} ${piece}`.replace(/\s+/g, " ").trim();
+          else interim += piece;
+        }
+        voiceState.finalText = finals;
+        applyVoiceDraft(interim);
+      };
+      recognition.onerror = event => {
+        const code = event.error || "";
+        if (code === "not-allowed" || code === "service-not-allowed") {
+          setVoiceHint(voiceCopy().voiceDenied);
+        } else if (code !== "aborted" && code !== "no-speech") {
+          setVoiceHint(voiceCopy().voiceError);
+        }
+        stopVoice({ keepDraft: true });
+      };
+      recognition.onend = () => {
+        const wasListening = voiceState.listening;
+        voiceState.listening = false;
+        if (voiceBtn) {
+          voiceBtn.classList.remove("is-listening");
+          voiceBtn.setAttribute("aria-pressed", "false");
+          voiceBtn.title = voiceCopy().voiceStart;
+          voiceBtn.setAttribute("aria-label", voiceCopy().voiceStart);
+        }
+        if (wasListening && (voiceState.finalText || input.value.trim())) {
+          setVoiceHint(voiceCopy().voiceReady);
+        } else {
+          setVoiceHint(voiceCopy().hint);
+        }
+        input.focus();
+      };
+      voiceState.recognition = recognition;
+      return recognition;
+    }
+
+    function toggleVoice() {
+      const recognition = ensureVoiceRecognition();
+      if (!recognition) {
+        setVoiceHint(voiceCopy().voiceUnsupported);
+        return;
+      }
+      if (voiceState.listening) {
+        stopVoice({ keepDraft: true });
+        return;
+      }
+      voiceState.baseText = input.value;
+      voiceState.finalText = "";
+      recognition.lang = uiLang === "es" ? "es-ES" : "en-US";
+      try {
+        recognition.start();
+      } catch (_) {
+        setVoiceHint(voiceCopy().voiceError);
+      }
+    }
+
     form.addEventListener("submit", event => {
       event.preventDefault();
+      if (voiceState.listening) stopVoice({ keepDraft: true });
       submitMessage(input.value);
     });
     input.addEventListener("keydown", event => {
@@ -1548,16 +1715,19 @@
         form.requestSubmit();
       }
     });
+    voiceBtn?.addEventListener("click", toggleVoice);
     suggestions.addEventListener("click", event => {
       const button = event.target.closest("button");
       if (button) submitMessage(button.textContent);
     });
     document.getElementById("newChat").addEventListener("click", () => {
+      if (voiceState.listening) stopVoice({ keepDraft: false });
       saveSession();
       conversationHistory = [];
       threadId = crypto.randomUUID ? crypto.randomUUID() : `thread-${Date.now()}`;
       input.value = "";
       showThread([]);
+      setVoiceHint(voiceCopy().hint);
       input.focus();
     });
     document.getElementById("langEn")?.addEventListener("click", () => applyUiLanguage("en"));
