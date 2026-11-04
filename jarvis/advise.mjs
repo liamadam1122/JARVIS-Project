@@ -197,7 +197,7 @@ function optimizeReply({ payload, specs, question }) {
 }
 
 export function looksLikeProblemSolving(text) {
-  return /\b(optim\w*|diagnos\w*|troubleshoot|stutter(?:ing)?|fps|overheat(?:ing)?|thermal|fan\b|ram\b|swap\b|crash(?:ing|es)?|lag(?:ging)?|temp(?:erature)?|slow(?:er|ing)?|speed up|boost|tune|fix (?:my )?(?:pc|mac|laptop|computer)|check (?:my )?(?:pc|mac|laptop|computer|sensors?|specs?|stats?|machine)|show (?:my )?(?:specs?|sensors?|stats?|telemetry|machine)|machine (?:readings?|stats?|specs?)|what(?:'s| is) wrong|why is (?:my )?(?:pc|mac|laptop|computer)|performance issue|graphics settings|what should i (buy|change))\b/i.test(text || "");
+  return /\b(optim\w*|diagnos\w*|troubleshoot|stutter(?:ing)?|fps|overheat(?:ing)?|thermal|hot\b|fan\b|ram\b|swap\b|crash(?:ing|es)?|lag(?:ging)?|temp(?:erature)?|slow(?:er|ing)?|speed up|boost|tune|fix (?:my )?(?:pc|mac|laptop|computer)|check (?:my )?(?:pc|mac|laptop|computer|sensors?|specs?|stats?|machine)|show (?:my )?(?:specs?|sensors?|stats?|telemetry|machine)|machine (?:readings?|stats?|specs?)|what(?:'s| is) wrong|why is (?:my )?(?:pc|mac|laptop|computer)|performance issue|graphics settings|what should i (buy|change))\b/i.test(text || "");
 }
 
 function looksLikeOptimize(text) {
@@ -222,10 +222,11 @@ export async function advise({ mode, question, specs, telemetry, history, thread
     ...memory.profile,
     ...(specs || {}),
   });
+  const wantsPlan = Boolean(problem) || looksLikeProblemSolving(question) || looksLikeOptimize(question);
   const wantsOptimize = looksLikeOptimize(question) || mode === "optimize" || Boolean(problem);
   const plannedSpecs = mergeSensedSpecs(mergedSpecs, telemetry);
-  const signals = deriveSignals(telemetry, telemetry?.culprits || [], problem || { text: question });
-  const ideas = rankIdeas(signals, telemetry?.device || {}, problem || { budget: plannedSpecs.budget, text: question });
+  const signals = wantsPlan ? deriveSignals(telemetry, telemetry?.culprits || [], problem || { text: question }) : [];
+  const ideas = wantsPlan ? rankIdeas(signals, telemetry?.device || {}, problem || { budget: plannedSpecs.budget, text: question }) : [];
   const ideaBlock = ideas.length ? `RANKED IDEAS:\n${ideas.map(item => `${item.title} (${item.cost}): ${item.why}`).join("\n")}` : "";
   let llmDetail = null;
 

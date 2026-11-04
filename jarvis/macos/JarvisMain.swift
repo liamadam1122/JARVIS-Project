@@ -28,7 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if $0 {
                 webView.load(URLRequest(url: self.page))
             } else if self.startServer() {
-                self.waitForServer(webView, tries: 20)
+                self.waitForServer(webView, tries: 40)
             } else {
                 webView.loadHTMLString(Self.offlinePage, baseURL: nil)
             }
@@ -99,8 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .appendingPathComponent("server.mjs")
         let serverFile = [bundled, besideApp].compactMap { $0 }.first { fileManager.fileExists(atPath: $0.path) }
         guard let serverFile else { return false }
-        let node = ["/opt/homebrew/bin/node", "/usr/local/bin/node"].first { fileManager.isExecutableFile(atPath: $0) }
-        guard let node else { return false }
+        guard let node = Self.nodeExecutable() else { return false }
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: node)
         proc.arguments = [serverFile.path]
@@ -112,6 +111,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } catch {
             return false
         }
+    }
+
+    static func nodeExecutable() -> String? {
+        let fileManager = FileManager.default
+        let bundled = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/node").path
+        let candidates = [bundled, "/opt/homebrew/bin/node", "/usr/local/bin/node"]
+        return candidates.first { fileManager.isExecutableFile(atPath: $0) }
     }
 
     func waitForServer(_ webView: WKWebView, tries: Int) {
@@ -130,9 +136,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     static let offlinePage = """
     <html><body style="font-family:-apple-system,sans-serif;background:#10140f;color:#e7eee4;padding:48px">
-    <h1 style="font-weight:500">JARVIS needs the local server</h1>
+    <h1 style="font-weight:500">JARVIS could not start</h1>
     <p>This window only shows readings. It does not tune a Mac, and it is not an App Store build.</p>
-    <p>Install Node.js 20, then double-click start-mac.command in the jarvis folder.</p>
+    <p>Quit JARVIS and open it again from the Applications folder.</p>
     </body></html>
     """
 }

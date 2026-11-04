@@ -84,8 +84,24 @@
     .hero { margin: 0 0 16px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; }
     .hero-kicker { margin: 0; color: var(--cyan); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     .hero-title { margin: 6px 0 10px; font-size: 22px; font-weight: 500; }
-    .spark { width: 100%; height: 36px; display: block; }
-    .idea-card { margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; }
+    .chart { width: 100%; height: 168px; display: block; }
+    .chart-frame { fill: rgba(8, 14, 22, .65); stroke: rgba(158, 201, 214, .55); stroke-width: 1.25; }
+    .chart-grid { stroke: rgba(158, 201, 214, .16); stroke-width: 1; }
+    .chart-line { fill: none; stroke: #d7eef4; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+    .chart-label { fill: #8b9aab; font: 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .plan-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+    .plan-switch.single { grid-template-columns: 1fr; }
+    .plan-btn {
+      border: 1px solid var(--line); background: transparent; border-radius: 12px;
+      padding: 12px 10px; cursor: pointer; letter-spacing: .04em;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px;
+    }
+    .plan-btn.free { color: var(--green); }
+    .plan-btn.paid { color: #e7c27a; }
+    .plan-btn[aria-expanded="true"] { background: rgba(158, 201, 214, .08); border-color: rgba(158, 201, 214, .55); }
+    .plan-panel { display: grid; gap: 8px; margin-top: 8px; }
+    .plan-panel[hidden] { display: none; }
+    .idea-card { margin-top: 0; padding: 12px; border: 1px solid var(--line); border-radius: 12px; }
     .pill { display: inline-block; margin-right: 8px; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     .pill.free { color: var(--green); border: 1px solid rgba(143,191,168,.5); }
     .pill.paid { color: #e7c27a; border: 1px solid rgba(231,194,122,.45); }
@@ -638,24 +654,44 @@
       ring.style.strokeDasharray = `${length} ${length}`;
       ring.style.strokeDashoffset = String(length * (1 - amount));
     }
-    function sparkline(values) {
+    function readingChart(points, unit) {
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      svg.setAttribute("viewBox", "0 0 120 32");
-      svg.setAttribute("class", "spark");
-      const nums = (values || []).filter(value => Number.isFinite(value));
-      if (nums.length < 2) return svg;
-      const min = Math.min(...nums);
-      const span = Math.max(...nums) - min || 1;
-      const path = document.createElementNS(svg.namespaceURI, "path");
-      path.setAttribute("fill", "none");
-      path.setAttribute("stroke", "#9ec9d6");
-      path.setAttribute("stroke-width", "1.6");
-      path.setAttribute("d", nums.map((value, index) => {
-        const x = (index / (nums.length - 1)) * 120;
-        const y = 30 - ((value - min) / span) * 26;
-        return `${index ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`;
-      }).join(" "));
-      svg.append(path);
+      svg.setAttribute("viewBox", "0 0 320 150");
+      svg.setAttribute("class", "chart");
+      svg.setAttribute("role", "img");
+      svg.setAttribute("aria-label", `Reading graph, 0 to 100 ${unit}`);
+      const left = 36;
+      const right = 308;
+      const top = 12;
+      const bottom = 124;
+      const add = (name, attrs) => {
+        const node = document.createElementNS(svg.namespaceURI, name);
+        for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+        svg.append(node);
+        return node;
+      };
+      add("rect", { class: "chart-frame", x: left, y: top, width: right - left, height: bottom - top, rx: "6" });
+      for (const tick of [0, 25, 50, 75, 100]) {
+        const y = bottom - ((bottom - top) * tick / 100);
+        add("line", { class: "chart-grid", x1: left, x2: right, y1: y, y2: y });
+        const label = add("text", { class: "chart-label", x: left - 6, y: y + 4, "text-anchor": "end" });
+        label.textContent = String(tick);
+      }
+      const unitLabel = add("text", { class: "chart-label", x: left, y: 146 });
+      unitLabel.textContent = unit;
+      const nowLabel = add("text", { class: "chart-label", x: right, y: 146, "text-anchor": "end" });
+      nowLabel.textContent = "now";
+      const nums = (points || []).map(point => point.value).filter(value => Number.isFinite(value));
+      if (nums.length >= 2) {
+        const d = nums.map((value, index) => {
+          const x = left + ((right - left) * index / (nums.length - 1));
+          const y = bottom - ((bottom - top) * Math.max(0, Math.min(100, value)) / 100);
+          return `${index ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`;
+        }).join(" ");
+        add("path", { class: "chart-line", d });
+        const last = add("text", { class: "chart-label", x: right - 8, y: top + 16, "text-anchor": "end" });
+        last.textContent = `${Math.round(nums[nums.length - 1])}${unit}`;
+      }
       return svg;
     }
     const symptomChoices = ["Hot", "Loud fans", "Slow", "Stutters/low FPS", "Crashes", "Battery drains"];
@@ -952,8 +988,10 @@
         heroTitle.textContent = culprit
           ? `${culprit.app} · ${culprit.cpuCores} cores · ${minutes} min`
           : "Nothing is overheating your computer right now.";
-        const series = Array.isArray(payload?.series) ? payload.series.map(point => point.temp ?? point.cpu) : [];
-        heroSpark.replaceChildren(sparkline(series));
+        const series = Array.isArray(payload?.series) ? payload.series : [];
+        const useTemp = series.some(point => Number.isFinite(point.temp));
+        const points = series.map(point => ({ value: useTemp ? point.temp : point.cpu }));
+        heroSpark.replaceChildren(readingChart(points, useTemp ? "°C" : "%"));
       }
       document.getElementById("pulseNote").textContent = culprit
         ? `${culprit.app} · ${culprit.cpuCores} cores for ${Math.max(1, Math.round(culprit.sustainedForSec / 60))} min`
@@ -1206,12 +1244,43 @@
       }, 30);
     }
 
+    function renderPlanSwitch(ideas) {
+      const costs = ["free", "paid"].filter(cost => ideas.some(idea => (idea.cost === "paid") === (cost === "paid")));
+      if (!costs.length) return null;
+      const wrap = document.createElement("div");
+      const row = document.createElement("div");
+      row.className = costs.length === 1 ? "plan-switch single" : "plan-switch";
+      const panels = {};
+      const buttons = {};
+      const openPlan = (cost) => {
+        for (const key of costs) {
+          const open = key === cost && panels[key].hidden;
+          panels[key].hidden = !open;
+          buttons[key].setAttribute("aria-expanded", open ? "true" : "false");
+        }
+      };
+      for (const cost of costs) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `plan-btn ${cost}`;
+        button.textContent = cost === "free" ? "Free option" : "Paid option";
+        button.setAttribute("aria-expanded", "false");
+        const panel = document.createElement("div");
+        panel.className = "plan-panel";
+        panel.hidden = true;
+        for (const idea of ideas.filter(item => (item.cost === "paid") === (cost === "paid"))) panel.append(renderIdeaCard(idea));
+        button.addEventListener("click", () => openPlan(cost));
+        buttons[cost] = button;
+        panels[cost] = panel;
+        row.append(button);
+      }
+      wrap.append(row, ...costs.map(cost => panels[cost]));
+      return wrap;
+    }
+
     function renderIdeaCard(idea) {
       const card = document.createElement("article");
       card.className = "idea-card";
-      const pill = document.createElement("span");
-      pill.className = `pill ${idea.cost === "paid" ? "paid" : "free"}`;
-      pill.textContent = idea.cost === "paid" ? "Paid" : "Free";
       const title = document.createElement("strong");
       title.textContent = idea.title || "Step";
       const why = document.createElement("p");
@@ -1270,7 +1339,7 @@
         }
       });
       actions.append(tryButton, doneButton);
-      card.append(pill, title, why, actions, bar, note);
+      card.append(title, why, actions, bar, note);
       return card;
     }
 
@@ -1348,8 +1417,9 @@
         note.className = "bubble-meta";
         note.textContent = providerLabel;
         reply.bubble.append(note);
-        if (Array.isArray(result.ideas)) {
-          for (const idea of result.ideas) reply.bubble.append(renderIdeaCard(idea));
+        if (Array.isArray(result.ideas) && result.ideas.length) {
+          const plans = renderPlanSwitch(result.ideas);
+          if (plans) reply.bubble.append(plans);
         }
         conversationHistory.push({ role: "assistant", content: reply.body.textContent });
         saveSession();

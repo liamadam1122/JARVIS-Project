@@ -3,3 +3,5 @@ node_modules/
 .DS_Store
 jarvis/data/
 jarvis/macos/JARVIS.app/
+jarvis/macos/.node-cache/
+jarvis/macos/dist/
