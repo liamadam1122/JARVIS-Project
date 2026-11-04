@@ -23,27 +23,48 @@ pack_one() {
   name="$1"
   stage="$(mktemp -d)"
   root="$stage/$name"
-  mkdir -p "$root/runtime"
+  app="$root/app"
+  mkdir -p "$app/runtime" "$root"
   rsync -a \
     --exclude macos \
     --exclude test \
     --exclude data \
     --exclude .git \
     --exclude xcode \
+    --exclude windows \
     --exclude '.*' \
     --exclude Dockerfile \
     --exclude README.md \
     --exclude build-windows-zips.sh \
+    --exclude start-mac.command \
+    --exclude start-linux.sh \
+    --exclude start-windows.bat \
     --exclude pnpm-lock.yaml \
     --exclude pnpm-workspace.yaml \
-    "$ROOT/" "$root/"
-  cp "$WIN_DIR/node.exe" "$root/runtime/node.exe"
-  cat > "$root/START.txt" <<EOF
-Double-click start-windows.bat.
+    --exclude 'assets/jarvis-orb-source.jpg' \
+    --exclude 'assets/jarvis-orb.png' \
+    --exclude 'assets/jarvis-orb-1024.png' \
+    "$ROOT/" "$app/"
+  cp "$WIN_DIR/node.exe" "$app/runtime/node.exe"
+  cp "$ROOT/windows/JARVIS.vbs" "$root/JARVIS.vbs"
+  cp "$ROOT/windows/JARVIS.cmd" "$root/JARVIS.cmd"
+  cp "$ROOT/windows/launcher.cs" "$root/launcher.cs"
+  cp "$ROOT/windows/jarvis.ico" "$root/jarvis.ico"
+  if [ -f "$ROOT/assets/jarvis-orb-256.png" ]; then
+    cp "$ROOT/assets/jarvis-orb-256.png" "$root/jarvis.png"
+  fi
+  cat > "$root/Double-click JARVIS.txt" <<EOF
+1. Unzip this folder to your Desktop or Downloads.
+2. Double-click JARVIS.cmd
+3. JARVIS opens in your browser.
 
-Node is already inside this folder. You do not install Node.js separately.
-
-This is the same JARVIS app as the other Windows downloads. It names the busy app, not a website or a file.
+Do not open the app folder. Node is already included.
+EOF
+  # Optional folder icon on Windows Explorer
+  cat > "$root/desktop.ini" <<EOF
+[.ShellClassInfo]
+IconResource=jarvis.ico,0
+InfoTip=JARVIS local assistant
 EOF
   out="$DIST/${name}.zip"
   rm -f "$out"
@@ -58,4 +79,4 @@ EOF
 pack_one JARVIS-gaming-pc
 pack_one JARVIS-gaming-laptop
 pack_one JARVIS-windows-computer
-echo "Built Windows zips with Node inside macos/dist/."
+echo "Built Windows zips with one-click launcher in macos/dist/."

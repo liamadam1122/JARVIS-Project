@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#080d16">
   <title>JARVIS</title>
+  <link rel="icon" href="assets/jarvis-mark.svg" type="image/svg+xml">
+  <link rel="icon" href="assets/favicon.png" type="image/png" sizes="256x256">
+  <link rel="apple-touch-icon" href="assets/jarvis-orb-256.png">
   <style>
     :root {
       color-scheme: dark;
@@ -52,17 +55,20 @@
     .machine-panel .lede { margin: 0 0 16px; color: var(--muted); font-size: 12px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     .brand { display: flex; align-items: center; gap: 12px; padding: 0 8px; }
     .brand-mark, .orb, .avatar.jarvis { position: relative; }
-    .brand-mark {
-      width: 32px; height: 32px; border: 1px solid var(--line);
-      border-radius: 8px; display: grid; place-items: center; color: var(--cyan);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      font-size: 11px; letter-spacing: 0.16em;
+    .brand-mark, .orb {
+      width: 34px; height: 34px; border: 0; border-radius: 50%;
+      display: grid; place-items: center; overflow: hidden;
+      background: radial-gradient(circle at 50% 42%, rgba(158,201,214,.18), transparent 70%);
+      box-shadow: 0 0 0 1px rgba(158,201,214,.18);
+    }
+    .brand-mark img, .orb img, .avatar.jarvis img {
+      width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 50%;
     }
     .brand-mark::after, .orb::after, .avatar.jarvis::after {
       content: "";
       position: absolute;
-      inset: 1px;
-      border-radius: inherit;
+      inset: -2px;
+      border-radius: 50%;
       border: 1.5px solid transparent;
       border-top-color: #d7eef4;
       border-right-color: rgba(158, 201, 214, .35);
@@ -183,12 +189,7 @@
     .tagline { color: var(--muted); font-size: 13px; max-width: 42rem; line-height: 1.45; margin: 0; }
     .content { width: min(760px, 100%); margin: 0 auto; padding: 40px 28px 28px; display: flex; flex-direction: column; flex: 1; }
     .welcome { text-align: center; margin: 28px 0 36px; }
-    .orb {
-      margin: 0 auto 18px; width: 34px; height: 34px; border-radius: 8px;
-      border: 1px solid var(--line); display:grid; place-items:center;
-      color: var(--cyan); font-size: 11px; letter-spacing: 0.16em;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
+    .orb { margin: 0 auto 18px; width: 52px; height: 52px; }
     h1 {
       font-size: clamp(28px, 4vw, 40px); line-height:1.12; letter-spacing:-.03em; margin:0;
       font-weight: 500;
@@ -250,8 +251,8 @@
     .chat { display:grid; gap:18px; padding:0 0 22px; }
     .message { display:flex; gap:12px; align-items:flex-start; animation: rise .25s ease-out; }
     @keyframes rise { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
-    .avatar { flex:0 0 28px; height:28px; display:grid; place-items:center; border-radius:50%; font-size:10px; }
-    .avatar.jarvis { color:var(--cyan); border:1px solid rgba(89,220,244,.38); }
+    .avatar { flex:0 0 28px; height:28px; display:grid; place-items:center; border-radius:50%; font-size:10px; overflow:hidden; }
+    .avatar.jarvis { color:var(--cyan); border:0; box-shadow: 0 0 0 1px rgba(89,220,244,.28); background:#070b12; }
     .avatar.you { color:#d9e4ff; background:rgba(91,140,255,.22); }
     .bubble { padding:3px 0; color:#d7e2ef; white-space:pre-wrap; }
     .bubble.user { color:#f3f7ff; }
@@ -304,7 +305,7 @@
   <div class="shell" id="shell">
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-mark">J</div>
+        <div class="brand-mark" aria-hidden="true"><img src="assets/jarvis-mark.svg" alt=""></div>
         <div><span class="brand-name">JARVIS</span><span class="brand-sub" id="brandSub">Private · sensors on this Mac</span></div>
       </div>
       <div class="lang-switch" role="group" aria-label="Language">
@@ -338,7 +339,7 @@
       </header>
       <section class="content">
         <div class="welcome" id="welcome">
-          <div class="orb">J</div>
+          <div class="orb" aria-hidden="true"><img src="assets/jarvis-mark.svg" alt=""></div>
           <h1>How can I help?</h1>
           <p>Chat, everyday work, and this laptop or desktop. Open Machine for live specs. JARVIS can see which app is using the most.</p>
         </div>
@@ -1439,7 +1440,14 @@
       row.className = "message";
       const avatar = document.createElement("div");
       avatar.className = "avatar " + (who === "you" ? "you" : "jarvis");
-      avatar.textContent = who === "you" ? "You" : "J";
+      if (who === "you") {
+        avatar.textContent = "You";
+      } else {
+        const mark = document.createElement("img");
+        mark.src = "assets/jarvis-mark.svg";
+        mark.alt = "";
+        avatar.appendChild(mark);
+      }
       const bubble = document.createElement("div");
       bubble.className = "bubble " + (who === "you" ? "user" : "");
       const body = document.createElement("div");
