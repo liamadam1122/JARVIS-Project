@@ -9,6 +9,9 @@ const STEPS = {
   disk: ["Remove files you chose from the storage list until the volume is under 90 percent.", "JARVIS only read names and sizes."],
   ram: ["Close unused apps first.", "Add memory only if this computer has a free slot and swap stays high."],
   pad: ["A cooling pad is optional.", "Use it only if the temperature stays high after the free steps."],
+  editProxy: ["Switch the timeline or viewer to Proxy or Better Performance.", "Create Optimized Media or Proxy Media for the heavy clips, then scrub the same section again."],
+  editDisk: ["Move the project media and render cache to a drive with free space.", "Leave about 15 to 20 percent free on that volume."],
+  editBackground: ["Stop background exports or background renders while you edit.", "Quit other browsers and editors, then compare the same timeline moment."],
 };
 
 function idea(partial) {
@@ -44,6 +47,9 @@ export const IDEAS = [
   idea({ id: "cooling-pad", title: "Add a cooling pad", category: "cooling hardware", cost: "paid", priceRangeEUR: "20-40", formFactors: ["laptop"], requires: ["hot"], steps: STEPS.pad, risk: "low" }),
   idea({ id: "ram-upgrade", title: "Add memory only if a slot exists", category: "upgrade", cost: "paid", priceRangeEUR: "40-120", requires: ["swap"], steps: STEPS.ram, risk: "medium", reversible: false }),
   idea({ id: "mac-no-gpu-tune", title: "Do not tune a separate Mac graphics card", category: "game settings", platforms: ["darwin"], steps: ["This Mac has no separate graphics card to tune.", "Close the heavy app and lower the game scale."] }),
+  idea({ id: "edit-proxy", title: "Use proxies for a heavy timeline", category: "creative app", requires: ["editing"], steps: STEPS.editProxy, expectedEffect: { metric: "cpu.usage", direction: "down", typicalRange: "smoother timeline scrubbing" } }),
+  idea({ id: "edit-disk", title: "Free space for media and render cache", category: "creative app", requires: ["editing"], steps: STEPS.editDisk }),
+  idea({ id: "edit-background", title: "Stop background renders while editing", category: "creative app", requires: ["editing"], steps: STEPS.editBackground }),
 ].flatMap(item => [item, { ...item, id: `${item.id}-repeat`, title: item.title }]).concat([
   idea({ id: "startup-apps", title: "Turn off startup apps you do not need", category: "close/limit app", steps: ["Open the system startup or login items.", "Turn off apps you do not need, then restart once."] }),
   idea({ id: "hard-surface", title: "Move a laptop off soft fabric", category: "cooling hardware", formFactors: ["laptop"], requires: ["hot"], steps: STEPS.vents }),
@@ -88,8 +94,12 @@ export function deriveSignals(telemetry, culprits = [], problem = {}) {
     add("fan-unknown", 0.1, readings.get("fan.rpm")?.detail || "Fan speed is not reported.");
   }
   const text = `${problem?.text || ""} ${(problem?.symptoms || []).join(" ")} ${(problem?.apps || "")}`.toLowerCase();
-  if (/game|fortnite|fps|stutter/.test(text)) add("game", 0.5, "The question names a game or gameplay.");
-  if (/hot|warm|fan|thermal/.test(text)) add("hot", 0.4, "The question names heat.");
+  if (/game|fortnite|fps|stutter|juego/.test(text)) add("game", 0.5, "The question names a game or gameplay.");
+  if (/hot|warm|fan|thermal|calor|caliente/.test(text)) add("hot", 0.4, "The question names heat.");
+  if (/final\s*cut|fcp|premiere|davinci|resolve|timeline|proxy|render|edit(?:ing)?|edici[oó]n|l[ií]nea\s+de\s+tiempo/.test(text)) {
+    add("editing", 0.85, "The question names video editing or a timeline.");
+  }
+  if (/lag|lags|lagging|slow|freeze|tirones|lento/.test(text)) add("lag", 0.55, "The question names lag or slowness.");
   return signals;
 }
 
@@ -99,11 +109,14 @@ export function rankIdeas(signals, device = {}, problem = {}) {
   const budget = String(problem?.budget || "").toLowerCase();
   const hidePaid = budget === "0" || budget.includes("free") || budget.includes("€0") || budget.includes("$0");
   const ids = new Set(signals.map(signal => signal.id));
+  const editing = ids.has("editing");
   const ranked = IDEAS.filter(item => {
     if (platform && item.platforms?.length && !item.platforms.includes(platform)) return false;
     if (form && item.formFactors?.length && !item.formFactors.includes(form)) return false;
     if (hidePaid && item.cost === "paid") return false;
     if (item.requires?.length && !item.requires.some(id => ids.has(id))) return false;
+    // Do not suggest quitting the creative app the user is trying to speed up.
+    if (editing && /^close-culprit/.test(item.id)) return false;
     return true;
   }).map(item => {
     const matched = item.requires?.length

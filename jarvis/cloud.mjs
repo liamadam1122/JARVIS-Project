@@ -17,7 +17,7 @@ async function groqChat({ messages, apiKey }) {
     body: JSON.stringify({
       model: GROQ_MODEL,
       temperature: 0.4,
-      max_tokens: 700,
+      max_tokens: 1100,
       messages,
     }),
   });
@@ -42,7 +42,7 @@ async function geminiChat({ messages, apiKey, model }) {
       parts: [{ text: item.content }],
     }));
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-  const generationConfig = { temperature: 0.3, maxOutputTokens: 700 };
+  const generationConfig = { temperature: 0.45, maxOutputTokens: 1100 };
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },

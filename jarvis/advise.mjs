@@ -203,93 +203,173 @@ function heavyLine(payload, lang = "en") {
     : `${heavy.name} is using ${heavy.cpu}% CPU right now.`;
 }
 
-function chattyLocalReply({ payload, question, lang }) {
+function relevantBite(payload, question, lang = "en") {
   const asked = String(question || "").toLowerCase();
+  const readings = readingMap(payload);
+  const bits = [];
+  const pick = (metric, labelEn, labelEs) => {
+    const reading = readings.get(metric);
+    if (!usable(reading)) return;
+    const label = lang === "es" ? labelEs : labelEn;
+    bits.push(`${label} ${Math.round(reading.value)}${reading.unit || ""}`);
+  };
+  if (/\b(hot|warm|heat|thermal|fans?|calor|caliente|ventiladores?)\b/.test(asked)) {
+    pick("temperature.cpu", "CPU", "CPU");
+    pick("temperature.gpu", "GPU", "GPU");
+    pick("cpu.usage", "CPU load", "Carga CPU");
+  } else if (/\b(ram|memory|swap|memoria)\b/.test(asked) || /\b(final\s*cut|premiere|timeline|edit|edici)/.test(asked)) {
+    pick("memory.ram.usage", "Memory", "Memoria");
+    pick("memory.swap.usage", "Swap", "Swap");
+    pick("cpu.usage", "CPU", "CPU");
+  } else if (/\b(game|fps|gpu|graphics|juego)\b/.test(asked)) {
+    pick("gpu.usage", "GPU", "GPU");
+    pick("temperature.gpu", "GPU temp", "Temp GPU");
+    pick("cpu.usage", "CPU", "CPU");
+  } else if (looksLikeProblemSolving(asked) || looksLikeOptimize(asked)) {
+    pick("cpu.usage", "CPU", "CPU");
+    pick("memory.ram.usage", "Memory", "Memoria");
+  }
   const heavy = heavyLine(payload, lang);
-  const device = deviceLine(payload?.device);
-  if (lang === "es") {
-    if (/hola|buenas|hey\b/.test(asked)) {
-      return `Hola. Estoy en ${device}.${heavy ? ` ${heavy}` : ""} Dime qué notas en el Mac o el PC, o pide optimizarlo.`;
-    }
-    if (/gracias|thank/.test(asked)) {
-      return "De nada. Si quieres, mira otra vez las lecturas después de un cambio y te digo si se movieron.";
-    }
-    if (/qui[eé]n eres|what are you|qu[eé] eres/.test(asked)) {
-      return "Soy JARVIS. Leo CPU, memoria y temperatura en este ordenador y respondo aquí. No cambio ajustes por ti.";
-    }
-    return `En ${device}: ${heavy || "no hay una app claramente pesada ahora"}. Pregúntame por calor, lentitud o cómo optimizarlo, o pide ayuda con un texto.`;
-  }
-  if (/hello|hi\b|hey\b/.test(asked)) {
-    return `Hi. I'm on ${device}.${heavy ? ` ${heavy}` : ""} Tell me what feels wrong, or ask to optimize this machine.`;
-  }
-  if (/thank/.test(asked)) {
-    return "You're welcome. After one change, ask again and I can compare the next reading.";
-  }
-  if (/who are you|what are you/.test(asked)) {
-    return "I'm JARVIS. I read CPU, memory, and temperature on this computer and answer here. I do not change settings for you.";
-  }
-  return `On ${device}: ${heavy || "no single app looks heavy right now"}. Ask about heat, slowness, or optimizing, or ask for help with a short write-up.`;
+  if (heavy) bits.push(heavy);
+  return bits.slice(0, 2).join(". ");
 }
 
-function diagnoseReply({ payload, specs, question, lang }) {
-  const findings = localFindings(payload, specs, question, lang).filter(item => !item.startsWith("Question:") && !item.startsWith("Stated") && !item.startsWith("Spend") && !item.startsWith("Juegos") && !item.startsWith("Presupuesto"));
-  if (!looksLikeProblemSolving(question) && !looksLikeOptimize(question)) {
-    return chattyLocalReply({ payload, question, lang });
-  }
-  if (lang === "es") {
-    return [
-      `En este ${deviceLine(payload?.device)}, ${findings[0] || "las lecturas no señalan un solo fallo."}`,
-      heavyLine(payload, lang),
-      findings.slice(1, 3).join(" "),
-      "No he cambiado nada. Haz un solo paso, marca el momento en la barra lateral y pregunta otra vez para comparar la siguiente lectura.",
-    ].filter(Boolean).join(" ");
-  }
-  return [
-    `On this ${deviceLine(payload?.device)}, ${findings[0] || "the available readings do not show a single fault."}`,
-    heavyLine(payload, lang),
-    findings.slice(1, 3).join(" "),
-    "Nothing was changed. Do one thing, mark the moment in the sidebar, then ask again so the next reading can be compared.",
-  ].filter(Boolean).join(" ");
+function namedApp(question = "") {
+  const text = String(question || "");
+  const match = text.match(/\b(Final Cut Pro|Final Cut|FCPX?|Premiere Pro|DaVinci Resolve|Chrome|Safari|Firefox|Spotify|Discord|Steam|Fortnite|Photoshop|After Effects|Logic Pro|GarageBand)\b/i);
+  return match ? match[0] : "";
 }
 
-function optimizeReply({ payload, specs, question, lang }) {
-  const finding = localFindings(payload, specs, question, lang).find(item => !item.startsWith("Question:") && !item.startsWith("Stated") && !item.startsWith("Spend") && !item.startsWith("Juegos") && !item.startsWith("Presupuesto"))
-    || (lang === "es" ? "Con las lecturas que hay ya se puede empezar." : "The readings that are present are enough to start.");
-  const plan = machinePlaybook(payload?.device, lang);
-  if (lang === "es") {
+function customSteps(question, payload, lang = "en") {
+  const asked = String(question || "").toLowerCase();
+  const app = namedApp(question);
+  const mac = payload?.device?.platform === "darwin";
+  const es = lang === "es";
+
+  if (/\b(final\s*cut|fcp|premiere|davinci|resolve|timeline|proxy|render|edici[oó]n|l[ií]nea\s+de\s+tiempo)\b/.test(asked)) {
+    if (es) {
+      return [
+        app ? `Para ${app}, el tirón en la línea de tiempo suele ser preview y disco, no un fallo raro.` : "El tirón en la línea de tiempo suele ser preview y disco, no un fallo raro.",
+        "1. Pon la línea de tiempo en Proxy o Better Performance.",
+        "2. Genera Optimized Media o Proxy Media para los clips pesados.",
+        "3. Cierra navegadores y otras apps de edición mientras trabajas.",
+        "4. Deja al menos un 15–20% libre en el disco del proyecto y de la caché de render.",
+        "5. Evita exportar en segundo plano mientras editas la misma secuencia.",
+      ].join("\n");
+    }
     return [
-      `${deviceLine(payload?.device)}. ${finding} ${heavyLine(payload, lang)}`.trim(),
+      app ? `For ${app}, timeline lag is usually preview load and disk pressure, not a random hardware failure.` : "Timeline lag is usually preview load and disk pressure, not a random hardware failure.",
+      "1. Set the timeline to Proxy or Better Performance.",
+      "2. Create Optimized Media or Proxy Media for the heavy clips.",
+      "3. Quit browsers and other editors while you work.",
+      "4. Keep about 15–20% free on the project and render-cache drive.",
+      "5. Avoid exporting in the background while scrubbing the same sequence.",
+    ].join("\n");
+  }
+
+  if (/\b(game|gaming|fps|fortnite|juego|juegos)\b/.test(asked)) {
+    const plan = machinePlaybook(payload?.device, lang);
+    return [
+      es ? (app ? `Para ${app}, empieza por ajustes gratis.` : "Para juegos, empieza por ajustes gratis.") : (app ? `For ${app}, start with free settings.` : "For gaming, start with free settings."),
+      plan.free.replace(/^Free plan\.\s*/i, "1. ").replace(/^Plan gratis\.\s*/i, "1. "),
+      "2. Change one setting, mark the moment, then ask again on the same scene.",
+    ].join("\n");
+  }
+
+  if (/\b(hot|warm|heat|thermal|fans?|calor|caliente|ventiladores?)\b/.test(asked)) {
+    return es
+      ? [
+        app ? `El calor encaja con ${app} o con carga alta.` : "Parece un tema de calor o carga.",
+        "1. Cierra o aligera la app más pesada (si es el navegador, cierra pestañas).",
+        "2. Pon el portátil o Mac en una superficie dura y deja libres las rejillas.",
+        "3. Espera un minuto y pregunta otra vez para comparar.",
+      ].join("\n")
+      : [
+        app ? `The heat fits ${app} or another heavy load.` : "This looks like heat or sustained load.",
+        "1. Quit or lighten the heaviest app (for a browser, close tabs).",
+        "2. Put the laptop or Mac on a hard surface and clear the vents.",
+        "3. Wait a minute, then ask again so we can compare.",
+      ].join("\n");
+  }
+
+  if (/\b(chrome|safari|firefox|browser|navegador|tabs?|pestañas?)\b/.test(asked) && /\b(slow|lag|lento|lent[oa]|tirones)\b/.test(asked)) {
+    return es
+      ? [
+        app ? `${app} suele ir lento por pestañas o extensiones, no por la GPU.` : "El navegador suele ir lento por pestañas o extensiones.",
+        "1. Abre el administrador de tareas del navegador y cierra las pestañas pesadas.",
+        "2. Desactiva extensiones que no uses.",
+        "3. Cierra otras apps pesadas y vuelve a probar la misma página.",
+      ].join("\n")
+      : [
+        app ? `${app} usually slows from tabs or extensions, not from the GPU.` : "Browsers usually slow from tabs or extensions.",
+        "1. Open the browser task manager and close the heavy tabs.",
+        "2. Turn off extensions you do not need.",
+        "3. Quit other heavy apps, then try the same page again.",
+      ].join("\n");
+  }
+
+  if (/\b(email|write|draft|letter|correo|escribe|texto)\b/.test(asked)) {
+    return es
+      ? "Dime el destinatario, el tono y el punto principal, y te escribo el texto completo."
+      : "Tell me the recipient, the tone, and the main point, and I will write the full text.";
+  }
+
+  if (looksLikeOptimize(asked) || looksLikeProblemSolving(asked)) {
+    const plan = machinePlaybook(payload?.device, lang);
+    if (es) {
+      return [
+        app ? `Vamos a por ${app} con pasos concretos.` : "Vamos con pasos concretos para esta máquina.",
+        plan.free,
+        plan.paid,
+        "Empieza por el plan gratis. No hace falta gastar dinero.",
+      ].join("\n");
+    }
+    return [
+      app ? `Here is a concrete plan for ${app}.` : "Here is a concrete plan for this machine.",
       plan.free,
       plan.paid,
-      "El plan gratis es el mejor comienzo. No hace falta gastar dinero. Un sensor que falte no bloquea esto.",
-    ].join(" ");
+      "Start with the free plan. You do not need to spend money.",
+    ].join("\n");
   }
-  return [
-    `${deviceLine(payload?.device)}. ${finding} ${heavyLine(payload, lang)}`.trim(),
-    plan.free,
-    plan.paid,
-    "The free plan is the better start. You do not need to spend money. A missing sensor does not block this.",
-  ].join(" ");
+
+  if (es) {
+    if (/hola|buenas|hey\b/.test(asked)) return "Hola. Dime qué app o qué problema tienes y te doy pasos a medida.";
+    if (/gracias|thank/.test(asked)) return "De nada. Cuando cambies una cosa, pregunta otra vez y lo comparamos.";
+    if (/qui[eé]n eres|qu[eé] eres/.test(asked)) return "Soy JARVIS. Respondo con pasos a medida usando las lecturas de este ordenador.";
+    return mac
+      ? "Dime qué quieres arreglar o mejorar en este Mac, o pide ayuda con un texto."
+      : "Dime qué quieres arreglar o mejorar en este PC, o pide ayuda con un texto.";
+  }
+  if (/hello|hi\b|hey\b/.test(asked)) return "Hi. Tell me which app or problem you mean and I will give fitted steps.";
+  if (/thank/.test(asked)) return "You're welcome. After one change, ask again and we can compare.";
+  if (/who are you|what are you/.test(asked)) return "I'm JARVIS. I give fitted steps using the readings on this computer.";
+  return mac
+    ? "Tell me what you want to fix or improve on this Mac, or ask for help with a short write-up."
+    : "Tell me what you want to fix or improve on this PC, or ask for help with a short write-up.";
+}
+
+function customFittedLocalReply({ payload, question, lang }) {
+  const es = lang === "es";
+  const lead = customSteps(question, payload, lang);
+  const bite = relevantBite(payload, question, lang);
+  const parts = [lead];
+  if (bite && (looksLikeProblemSolving(question) || looksLikeOptimize(question))) {
+    parts.push(es ? `Lectura útil ahora: ${bite}.` : `Useful reading now: ${bite}.`);
+  }
+  return parts.filter(Boolean).join("\n\n");
 }
 
 export function looksLikeProblemSolving(text) {
-  return /\b(optim\w*|diagnos\w*|troubleshoot|stutter(?:ing)?|fps|overheat(?:ing)?|thermal|hot\b|fan\b|ram\b|swap\b|crash(?:ing|es)?|lag(?:ging)?|temp(?:erature)?|slow(?:er|ing)?|speed up|boost|tune|fix (?:my )?(?:pc|mac|laptop|computer)|check (?:my )?(?:pc|mac|laptop|computer|sensors?|specs?|stats?|machine)|show (?:my )?(?:specs?|sensors?|stats?|telemetry|machine)|machine (?:readings?|stats?|specs?)|what(?:'s| is) wrong|why is (?:my )?(?:pc|mac|laptop|computer)|performance issue|graphics settings|what should i (buy|change)|calor|caliente|lento|lent[oa]|r[aá]pido|ventilador|tirones|se\s+cuelga|se\s+apaga|por\s+qu[eé]|qu[eé]\s+pasa|arreglar|problema|rendimiento)\b/i.test(text || "");
+  return /\b(optim\w*|diagnos\w*|troubleshoot|stutter(?:ing)?|fps|overheat(?:ing)?|thermal|hot\b|fans?\b|ram\b|swap\b|crash(?:ing|es)?|lag(?:ging)?|temp(?:erature)?|slow(?:er|ing)?|speed up|boost|tune|fix (?:my )?(?:pc|mac|laptop|computer)|check (?:my )?(?:pc|mac|laptop|computer|sensors?|specs?|stats?|machine)|show (?:my )?(?:specs?|sensors?|stats?|telemetry|machine)|machine (?:readings?|stats?|specs?)|what(?:'s| is) wrong|why is (?:my )?(?:pc|mac|laptop|computer)|performance issue|graphics settings|what should i (buy|change)|calor|caliente|lento|lent[oa]|r[aá]pido|ventiladores?|tirones|se\s+cuelga|se\s+apaga|por\s+qu[eé]|qu[eé]\s+pasa|arreglar|problema|rendimiento|timeline|proxy|final\s*cut|premiere|davinci)\b/i.test(text || "");
 }
 
 function looksLikeOptimize(text) {
-  return /\b(optim\w*|faster|speed up|boost|tune|settings|what should i (buy|change)|budget|m[aá]s\s+r[aá]pido|mejorar|ajustes|configur)\b/i.test(text || "");
+  return /\b(optim\w*|faster|speed up|boost|tune|settings|what should i (buy|change)|budget|m[aá]s\s+r[aá]pido|mejorar|ajustes|configur|make it faster|más fluido|mas fluido)\b/i.test(text || "");
 }
 
 function safeDetail(error) {
   const message = String(error?.message || "The online brain did not answer.");
   return message.replace(/https?:\/\/\S+/g, "").replace(/key=[^\s&]+/gi, "").slice(0, 180);
-}
-
-function renderIdeas(ideas, lang = "en") {
-  if (!ideas?.length) return "";
-  const paid = lang === "es" ? "Plan de pago." : "Paid plan.";
-  const free = lang === "es" ? "Plan gratis." : "Free plan.";
-  return ideas.slice(0, 3).map((item, index) => `${index + 1}. ${item.title}. ${item.cost === "paid" ? paid : free} ${item.why} ${item.steps[0] || ""}`).join(" ");
 }
 
 export async function advise({ mode, question, specs, telemetry, history, threadId = "default", moment = "", problem = null, language = "" }) {
@@ -346,12 +426,11 @@ export async function advise({ mode, question, specs, telemetry, history, thread
     wantsOptimize ? "game graphics settings" : "graphics overheating",
   ]);
   const web = secrets.allowWebLookup ? await searchRelatedIssues(query) : { status: "skipped", results: [], detail: "Web lookup is off." };
-  const reply = polishReply([
-    wantsOptimize
-      ? optimizeReply({ payload: telemetry, specs: plannedSpecs, question, lang })
-      : diagnoseReply({ payload: telemetry, specs: plannedSpecs, question, lang }),
-    wantsPlan ? renderIdeas(ideas, lang) : "",
-  ].filter(Boolean).join(" "));
+  const reply = polishReply(customFittedLocalReply({
+    payload: telemetry,
+    question,
+    lang,
+  }));
   await rememberInteraction({ mode: role, question, reply, specs: plannedSpecs, threadId });
   return {
     mode: role,

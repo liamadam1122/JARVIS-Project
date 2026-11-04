@@ -4,36 +4,83 @@ const OLLAMA = "http://127.0.0.1:11434";
 // Prefer smaller models on 8 GB Macs so the UI stays responsive.
 const PREFERRED_MODELS = ["llama3.2:1b", "gemma3:1b", "llama3.2:3b", "qwen2.5:3b", "phi3:mini"];
 const CHAT_TIMEOUT_MS = 90_000;
-const KEY_METRICS = [
-  "cpu.usage", "gpu.usage", "temperature.cpu", "temperature.gpu",
-  "memory.ram.usage", "memory.swap.usage", "cpu.power", "gpu.power",
-];
 
-function compactReadings(telemetry) {
-  const map = new Map((telemetry?.readings || []).filter(r => r?.metric).map(r => [r.metric, r]));
-  const rows = [];
-  for (const metric of KEY_METRICS) {
-    const reading = map.get(metric);
-    if (!reading) continue;
-    if (reading.status === "available" && typeof reading.value === "number" && Number.isFinite(reading.value)) {
-      rows.push(`${metric}=${Number(reading.value.toFixed(1))}${reading.unit || ""}`);
-    } else {
-      rows.push(`${metric}:${reading.status || "unavailable"}`);
-    }
+function readingValue(map, metric) {
+  const reading = map.get(metric);
+  if (reading?.status === "available" && typeof reading.value === "number" && Number.isFinite(reading.value)) {
+    return { ok: true, value: reading.value, unit: reading.unit || "", detail: reading.detail || "" };
   }
+  return { ok: false, status: reading?.status || "unavailable", detail: reading?.detail || "" };
+}
+
+function topicFromQuestion(question = "") {
+  const q = String(question || "").toLowerCase();
+  return {
+    heat: /\b(hot|warm|heat|thermal|fans?|overheat|calor|caliente|ventiladores?)\b/i.test(q),
+    memory: /\b(ram|memory|swap|memoria)\b/i.test(q),
+    gpu: /\b(gpu|graphics|video card|tarjeta)\b/i.test(q),
+    editing: /\b(final\s*cut|fcp|premiere|davinci|resolve|timeline|proxy|render|export|edit(?:ing)?|montage|edici[oó]n|l[ií]nea\s+de\s+tiempo)\b/i.test(q),
+    game: /\b(game|gaming|fps|fortnite|valorant|cs2|warzone|juego|juegos)\b/i.test(q),
+    lag: /\b(lag|lags|lagging|stutter|slow|slowing|freeze|freezes|tirones|lento|lent[oa]|se\s+cuelga)\b/i.test(q),
+    writing: /\b(email|write|draft|letter|essay|correo|escribe|texto|redact)\b/i.test(q),
+    chat: /\b(hola|hello|hi\b|hey\b|thanks|gracias|who are you|qui[eé]n eres)\b/i.test(q),
+  };
+}
+
+export function relevantMachineContext(question, telemetry) {
+  const topic = topicFromQuestion(question);
+  const map = new Map((telemetry?.readings || []).filter(r => r?.metric).map(r => [r.metric, r]));
   const device = telemetry?.device || {};
+  const lines = [];
   const kind = device.formFactor === "laptop" ? "laptop" : device.formFactor === "desktop" ? "desktop PC" : "computer";
-  const busy = (telemetry?.busyApps || []).map(app => `${app.name} cpu ${app.cpu}% memory ${app.mem}%`).join("; ");
-  const heavy = (telemetry?.heavyApps || []).map(app => `${app.name} (cpu ${app.cpu}%, memory ${app.mem}%)`).join("; ");
-  return [
-    `machine: ${kind}`,
-    `device: ${[device.model || device.macModel, device.chipName, device.cpuBrand, Array.isArray(device.gpuModels) ? device.gpuModels.join(", ") : "", Number.isFinite(device.memoryGb) ? `${device.memoryGb.toFixed(0)} GiB memory` : ""].filter(Boolean).join(" · ") || "unknown"}`,
-    rows.join("; ") || "no key readings",
-    Array.isArray(telemetry?.culprits) && telemetry.culprits.length
-      ? `culprits: ${telemetry.culprits.map(item => `${item.app} ${item.cpuCores} cores for ${item.sustainedForSec}s confidence ${item.confidence}`).join("; ")}`
-      : (busy ? `busiest apps: ${busy}` : "busiest apps: unavailable"),
-    heavy ? `unusually heavy: ${heavy}` : "unusually heavy: none",
-  ].join("\n");
+  const identity = [device.model || device.macModel, device.chipName, device.cpuBrand, Number.isFinite(device.memoryGb) ? `${device.memoryGb.toFixed(0)} GiB memory` : ""]
+    .filter(Boolean)
+    .join(" · ") || "unknown";
+  lines.push(`machine: ${kind}`);
+  lines.push(`device: ${identity}`);
+
+  const want = new Set(["memory.ram.usage"]);
+  if (topic.heat || topic.lag || topic.editing || topic.game) {
+    want.add("cpu.usage");
+    want.add("temperature.cpu");
+    want.add("temperature.gpu");
+    want.add("gpu.usage");
+  }
+  if (topic.memory || topic.lag || topic.editing) {
+    want.add("memory.swap.usage");
+  }
+  if (topic.gpu || topic.game || topic.editing) {
+    want.add("gpu.usage");
+    want.add("temperature.gpu");
+  }
+  if (!topic.writing && !topic.chat) {
+    want.add("cpu.usage");
+  }
+
+  for (const metric of want) {
+    const reading = readingValue(map, metric);
+    if (reading.ok) lines.push(`${metric}=${Number(reading.value.toFixed(1))}${reading.unit}`);
+  }
+
+  const culprits = Array.isArray(telemetry?.culprits) ? telemetry.culprits.slice(0, 2) : [];
+  if (culprits.length) {
+    lines.push(`relevant apps: ${culprits.map(item => `${item.app} (~${item.cpuPctOfMachine || item.cpuCores}% machine, ${item.confidence})`).join("; ")}`);
+  } else {
+    const busy = (telemetry?.busyApps || []).slice(0, 2);
+    if (busy.length) lines.push(`busiest apps: ${busy.map(app => `${app.name} cpu ${app.cpu}%`).join("; ")}`);
+  }
+
+  const full = (telemetry?.storageVolumes || []).find(volume => typeof volume.usePercent === "number" && volume.usePercent >= 85);
+  if (full && (topic.editing || topic.lag || topic.memory)) {
+    lines.push(`storage: ${full.mount} ${full.usePercent.toFixed(0)}% full`);
+  }
+
+  if (device.acConnected === false && (topic.lag || topic.game || topic.editing || topic.heat)) {
+    lines.push("power: on battery");
+  }
+
+  lines.push("RULE: only quote readings from this block that help answer the latest question. Skip the rest.");
+  return lines.join("\n");
 }
 
 export function machinePlaybook(device = {}, lang = "en") {
@@ -41,57 +88,58 @@ export function machinePlaybook(device = {}, lang = "en") {
 }
 
 export function polishReply(text) {
-  return String(text || "")
+  let out = String(text || "")
     .replace(/\*\*([^*]+)\*\*/g, "$1")
     .replace(/__([^_]+)__/g, "$1")
     .replace(/(^|[^\w])\*([^*\n]+)\*(?!\*)/g, "$1$2")
     .replace(/^#{1,6}\s+/gm, "")
-    .replace(/^\s*[*•●▪]\s+/gm, "")
     .replace(/[★☆✦✧▶►]/g, "")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+    .replace(/[ \t]+\n/g, "\n");
+
+  // Turn star/bullet lists into plain numbered steps so the chat stays easy to scan.
+  let step = 0;
+  out = out.replace(/^\s*[*•●▪\-]\s+/gm, () => {
+    step += 1;
+    return `${step}. `;
+  });
+
+  return out.replace(/\n{3,}/g, "\n\n").trim();
 }
 
-export function systemPrompt(_mode, specs, telemetry, memoryText, lang = "en") {
+export function systemPrompt(_mode, specs, telemetry, memoryText, lang = "en", question = "") {
   return [
-    "You are JARVIS, a premium private assistant for this laptop or desktop PC. One conversation covers chat, everyday work writing, troubleshooting, and careful optimization.",
+    "You are JARVIS, a private assistant on this computer. You chat, help with writing, troubleshoot, and optimize. Answer like a capable normal AI: fitted to THIS message, not a template.",
     replyInLanguageInstruction(lang),
-    "Voice: calm, precise, smooth. Write plain sentences. No slang unless the user uses it. No hype. No filler.",
-    "Never use emojis, asterisks, stars, markdown, headings, or decorative symbols. Do not format with bold or bullets made of stars.",
-    "Do not sound like a fixed script or an automated ticket reply. Answer the latest message directly, in your own words, using the live readings only when they help.",
-    "Long messages: one short summary, then the answer. Work writing stays concise. Stop when done.",
-    "You can see this computer's live readings and the apps using the most CPU and memory. The same reading path covers laptops and desktop PCs. A laptop is a machine with a battery. A desktop is a machine without one.",
-    "Always answer. A missing sensor, fan speed, cooling type, monitor, or game does not stop the reply. Name that one item as unavailable, then continue with everything else you can read. Do not invent the missing number. Do not refuse, stall, or send a questionnaire instead of an answer.",
-    "Do not dump a specification list during ordinary chat or writing. Answer the question.",
-    "If culprits are present, name the friendly app and its confidence. You see apps, not websites, tabs, or files. For a browser, say one or more tabs or extensions. Do not invent which site.",
-    "If RANKED IDEAS are present, explain the top idea first. Offer a free idea before a paid one. Do not add an idea that is not in that list.",
-    "A remembered game is only a name from an earlier message. Never say the user cannot run a game. Do not mention a game unless the user names it in their latest message. An old reply, an example, or a laptop with 8 GiB of memory is not proof a game will not launch.",
-    "If PAST CASES are present, use them only when the user is talking about that same problem. Do not drag an old game into a new question.",
-    "If a marked moment is included, say in one sentence whether CPU or memory moved, and whether that is better.",
-    "A problem is a fault: heat, fans stopped, crashes, stutter, slowness. Explain what the problem is in plain language, then what can be done about it. Use every reading that is present. One reversible next step. Never claim you changed the machine. Do not turn a fault into a shopping list.",
-    "Optimization always gets an answer in the same reply. Free plan first: ordered steps in system settings and only well-known free tools from the PC or laptop maker, NVIDIA, or AMD. Paid plan second: only parts that match the readings you actually have, such as cooling, RAM, or a monitor. Say which plan fits better. Say they do not need to spend money. If cooling, fans, or the monitor were not read, still write both plans and mark only those items unavailable. Never suggest cracks, cheats, undervolt tools from unknown publishers, or unknown optimizer downloads.",
-    "Ordinary chat, greetings, and writing help do not need a free plan or a paid plan.",
+    "Voice: calm, clear, human. Short sentences. No slang unless the user uses it. No hype. No filler.",
+    "Never use emojis, asterisks, markdown headings, or decorative symbols. Numbered lists are good. Put each step on its own line.",
+    "",
+    "How every reply should look:",
+    "1) First line: a direct answer to what they asked.",
+    "2) Then only the readings that matter for that answer. One or two numbers max. Never paste a full stats dump.",
+    "3) Then custom steps for their exact app or task (Final Cut, a game, a browser, an email, heat, and so on). Name the app they named.",
+    "4) If they want speed or a fix: a short Free plan list, then a Paid plan only when the readings support buying something. Say they do not need to spend money.",
+    "5) Stop. No wrap-up paragraph that repeats the same advice.",
+    "",
+    "Custom fit means: if they mention Final Cut Pro timeline lag, talk proxies, optimized media, render cache, timeline resolution, background exports, and memory pressure. If they mention a game, talk that game path. If they ask for an email, write the email. Ordinary chat needs no free or paid plan.",
+    "Always answer. A missing sensor does not stop you. Mention only that one missing item if it matters. Do not invent numbers.",
+    "You see apps, not websites, tabs, or files. For a browser, say tabs or extensions. Do not invent which site.",
+    "If RANKED IDEAS are present, weave the best matching ones into your custom steps. Prefer free before paid. Do not add ideas that are not in that list.",
+    "A remembered game is only a name from an earlier message. Do not mention a game unless the user names it now.",
+    "Never claim you changed the machine. Never suggest cracks, cheats, undervolt tools from unknown publishers, or unknown optimizer downloads.",
     machinePlaybook(telemetry?.device, lang).guidance,
     memoryText || "",
     specs?.games ? `User-stated games/workload: ${specs.games}` : "",
     specs?.budget ? `User-stated budget: ${specs.budget}` : "",
     specs?.notes ? `User-stated notes: ${specs.notes}` : "",
-    specs?.cpu ? `CPU: ${specs.cpu}` : "",
-    specs?.ram ? `RAM: ${specs.ram}` : "",
-    specs?.gpu ? `Graphics: ${specs.gpu}` : "",
-    specs?.cooling ? `Cooling: ${specs.cooling}` : "",
-    specs?.fans ? `Fans: ${specs.fans}` : "",
-    specs?.monitor ? `Monitor: ${specs.monitor}` : "",
-    "LIVE MACHINE:",
-    compactReadings(telemetry),
-  ].filter(Boolean).join("\n");
+    "RELEVANT MACHINE CONTEXT (use sparingly):",
+    relevantMachineContext(question, telemetry),
+  ].filter(item => item !== null && item !== undefined).join("\n");
 }
 
 export function buildChatMessages({ mode, question, specs, telemetry, history, memoryText, language }) {
   const lang = detectLanguage(question, language);
   const messages = [
-    { role: "system", content: systemPrompt(mode, specs, telemetry, memoryText, lang) },
+    { role: "system", content: systemPrompt(mode, specs, telemetry, memoryText, lang, question) },
   ];
   if (Array.isArray(history)) {
     for (const turn of history.slice(-4)) {
@@ -120,7 +168,7 @@ export async function ollamaStatus() {
   }
 }
 
-export async function localChat({ mode, question, specs, telemetry, history, memoryText }) {
+export async function localChat({ mode, question, specs, telemetry, history, memoryText, language }) {
   const models = await listModels();
   const model = PREFERRED_MODELS.find(name => models.some(item => item === name || item.startsWith(`${name}-`) || item.startsWith(name)))
     || models[0];
@@ -128,7 +176,7 @@ export async function localChat({ mode, question, specs, telemetry, history, mem
     throw new Error("The local model is still downloading (about 2 GB). Leave this page open and try again in a few minutes.");
   }
 
-  const messages = buildChatMessages({ mode, question, specs, telemetry, history, memoryText });
+  const messages = buildChatMessages({ mode, question, specs, telemetry, history, memoryText, language });
 
   const response = await fetch(`${OLLAMA}/api/chat`, {
     method: "POST",
@@ -139,7 +187,7 @@ export async function localChat({ mode, question, specs, telemetry, history, mem
       messages,
       stream: false,
       keep_alive: "2m",
-      options: { temperature: 0.4, num_ctx: 4096, num_predict: 700 },
+      options: { temperature: 0.45, num_ctx: 4096, num_predict: 900 },
     }),
   });
   if (!response.ok) throw new Error("Local model request failed.");
