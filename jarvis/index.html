@@ -394,6 +394,7 @@
                 <button class="voice-btn" id="voiceBtn" type="button" aria-pressed="false" aria-label="Dictate with microphone" title="Dictate">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z"/><path d="M19 11a7 7 0 0 1-14 0"/><path d="M12 18v3"/></svg>
                 </button>
+                <button class="send" id="voiceOkay" type="button" hidden>Okay</button>
                 <button class="send" id="send" type="submit">Send</button>
               </div>
             </div>
@@ -488,6 +489,7 @@
     const form = document.getElementById("form");
     const input = document.getElementById("input");
     const voiceBtn = document.getElementById("voiceBtn");
+    const voiceOkay = document.getElementById("voiceOkay");
     const composerHint = document.getElementById("composerHint");
     const voiceState = {
       listening: false,
@@ -495,6 +497,12 @@
       baseText: "",
       finalText: "",
     };
+
+    function setVoiceOkayVisible(show) {
+      if (!voiceOkay) return;
+      voiceOkay.hidden = !show;
+      voiceOkay.textContent = (UI[uiLang] || UI.en).voiceOkay;
+    }
     const chat = document.getElementById("chat");
     const welcome = document.getElementById("welcome");
     const suggestions = document.getElementById("suggestions");
@@ -525,8 +533,9 @@
         placeholder: "Message JARVIS",
         hint: "Return to send · Shift + Return for a new line · Mic to dictate",
         voiceStart: "Dictate",
-        voiceListening: "Listening… tap mic when done",
-        voiceReady: "Draft ready — edit it, then Send",
+        voiceListening: "Listening… speak, then press Okay",
+        voiceReady: "Okay — edit the text if you want, then Send",
+        voiceOkay: "Okay",
         voiceUnsupported: "Voice typing needs Chrome, Edge, or Safari with mic permission.",
         voiceDenied: "Microphone blocked. Allow mic access for this page, then try again.",
         voiceError: "Could not hear that. Tap the mic and try again.",
@@ -553,8 +562,9 @@
         placeholder: "Escribe a JARVIS",
         hint: "Return para enviar · Shift + Return para línea nueva · Mic para dictar",
         voiceStart: "Dictar",
-        voiceListening: "Escuchando… toca el mic cuando termines",
-        voiceReady: "Borrador listo — edítalo y pulsa Enviar",
+        voiceListening: "Escuchando… habla y pulsa Okay",
+        voiceReady: "Okay — edita el texto si quieres y pulsa Enviar",
+        voiceOkay: "Okay",
         voiceUnsupported: "El dictado necesita Chrome, Edge o Safari con permiso de micrófono.",
         voiceDenied: "Micrófono bloqueado. Permite el micrófono en esta página e inténtalo otra vez.",
         voiceError: "No se escuchó bien. Toca el mic e inténtalo otra vez.",
@@ -1611,9 +1621,13 @@
         voiceBtn.title = voiceCopy().voiceStart;
         voiceBtn.setAttribute("aria-label", voiceCopy().voiceStart);
       }
+      setVoiceOkayVisible(false);
       if (keepDraft && (voiceState.finalText || input.value.trim())) {
         setVoiceHint(voiceCopy().voiceReady);
-      } else if (!voiceState.listening) {
+        input.focus();
+        const end = input.value.length;
+        try { input.setSelectionRange(end, end); } catch (_) {}
+      } else {
         setVoiceHint(voiceCopy().hint);
       }
     }
@@ -1642,6 +1656,7 @@
           voiceBtn.title = voiceCopy().voiceListening;
           voiceBtn.setAttribute("aria-label", voiceCopy().voiceListening);
         }
+        setVoiceOkayVisible(true);
         setVoiceHint(voiceCopy().voiceListening);
       };
       recognition.onresult = event => {
@@ -1665,7 +1680,7 @@
         stopVoice({ keepDraft: true });
       };
       recognition.onend = () => {
-        const wasListening = voiceState.listening;
+        const hadDraft = !!(voiceState.finalText || input.value.trim());
         voiceState.listening = false;
         if (voiceBtn) {
           voiceBtn.classList.remove("is-listening");
@@ -1673,11 +1688,9 @@
           voiceBtn.title = voiceCopy().voiceStart;
           voiceBtn.setAttribute("aria-label", voiceCopy().voiceStart);
         }
-        if (wasListening && (voiceState.finalText || input.value.trim())) {
-          setVoiceHint(voiceCopy().voiceReady);
-        } else {
-          setVoiceHint(voiceCopy().hint);
-        }
+        setVoiceOkayVisible(false);
+        if (hadDraft) setVoiceHint(voiceCopy().voiceReady);
+        else setVoiceHint(voiceCopy().hint);
         input.focus();
       };
       voiceState.recognition = recognition;
@@ -1716,6 +1729,7 @@
       }
     });
     voiceBtn?.addEventListener("click", toggleVoice);
+    voiceOkay?.addEventListener("click", () => stopVoice({ keepDraft: true }));
     suggestions.addEventListener("click", event => {
       const button = event.target.closest("button");
       if (button) submitMessage(button.textContent);
